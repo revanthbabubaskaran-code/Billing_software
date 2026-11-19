@@ -14,7 +14,9 @@ The app opens in your browser at `http://127.0.0.1:8765`. It listens only on thi
 
 ## Create a bill
 
-Enter the customer name and address, add one or more items, choose a GST rate, and set the invoice date. The app assigns the next invoice number when you finalize. A bill date may be today, a future date, or the same date as the latest finalized bill; it cannot be earlier than the latest finalized bill. Finalization saves a PDF copy and opens a bill summary with print and PDF actions.
+Enter customer and optional ship-to details, place of supply, reverse-charge status, and invoice terms. Add line items with optional HSN/SAC codes and units, quantities, rates, and GST rates. Choose intra-state (CGST plus SGST) or inter-state (IGST) tax treatment. The app shows a tax-rate summary, editable round-off, grand total, and amount in words. The company profile can include phone and email, in addition to GSTIN, address, logo, bank details, and header/footer text.
+
+The app assigns the next invoice number when you finalize. A bill date may be today, a future date, or the same date as the latest finalized bill; it cannot be earlier than the latest finalized bill. Finalization saves a PDF copy and opens a bill summary with print and PDF actions.
 
 ## Local data
 
