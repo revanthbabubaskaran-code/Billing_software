@@ -10,9 +10,9 @@ Install Python 3.14 and [uv](https://docs.astral.sh/uv/), then double-click `sta
 uv run billing-software
 ```
 
-The app opens in your browser at `http://127.0.0.1:8765`. It listens only on this computer. On first launch, enter company details and select the folder for bill copies. Use **Company settings** to edit those details or change the destination later.
+The app opens in your browser at `http://127.0.0.1:8765` and listens only on this computer. The launch screen lets you select a company profile or add another. Each profile has its own company details, optional logo, bill-copy folder, and invoice history. If a profile has no logo, its tile displays initials from the company name. Use **Company settings** to edit the selected profile. Existing single-company data is migrated to the first profile automatically.
 
-The app follows the operating system's light or dark appearance setting and adapts its layout for desktop, tablet, and narrow phone screens.
+The app uses Waitress to serve the local interface. It follows the operating system's light or dark appearance setting and adapts its layout for desktop, tablet, and narrow phone screens.
 
 ## Create a bill
 

@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% block title %}Choose a profile{% endblock %}{% block body_class %}profile-select-screen{% endblock %}{% block content %}
+<section class="profile-selector">
+  <a class="profile-brand" href="/"><span class="brand-mark">L</span><span>ledgerline<small>GST BILLING DESK</small></span></a>
+  <header class="profile-heading"><div class="eyebrow">LOCAL COMPANY WORKSPACES</div><h1>Who’s billing today?</h1><p>Choose a company profile to continue.</p></header>
+  {% if profiles %}
+  <div class="profile-grid">
+    {% for profile in profiles %}
+    <article class="profile-choice" style="--profile-index:{{ loop.index0 }}">
+      <form method="post" action="/select-profile/{{ profile.id }}"><button class="profile-card" type="submit" aria-label="Use {{ profile.company.name }} profile">
+        <span class="profile-avatar">{% if profile.company.logo %}<img src="/profiles/{{ profile.id }}/logo" alt="{{ profile.company.name }} logo">{% else %}<span>{{ profile.initials }}</span>{% endif %}</span>
+        <span class="profile-name">{{ profile.company.name }}</span>
+        <span class="profile-gstin">{{ profile.company.gstin }}</span>
+      </button></form>
+      <a class="profile-edit" href="/setup?profile_id={{ profile.id }}">Edit company details</a>
+    </article>
+    {% endfor %}
+    <a class="profile-choice add-profile-choice" href="/setup/new"><span class="profile-avatar add-profile-avatar"><span>＋</span></span><span class="profile-name">Add profile</span><span class="profile-gstin">Set up another company</span></a>
+  </div>
+  {% else %}
+  <div class="profile-empty"><div class="empty-icon">▤</div><h2>No company profiles yet</h2><p>Add a company to create its first billing workspace.</p><a class="button button-primary" href="/setup/new">＋ Add your first profile</a></div>
+  {% endif %}
+  <p class="profile-local-note"><span class="status-dot"></span>Profiles and bills stay on this computer</p>
+</section>
+{% endblock %}

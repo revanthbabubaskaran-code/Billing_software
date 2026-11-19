@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Ledgerline{% endblock %} · Billing</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <aside class="sidebar">
     <a class="brand" href="/"><span class="brand-mark">L</span><span>ledgerline<small>GST BILLING DESK</small></span></a>
     {% if cfg.company.name %}<div class="workspace"><span class="workspace-label">YOUR WORKSPACE</span><strong>{{ cfg.company.name }}</strong><small>{{ cfg.company.gstin }}</small></div>{% endif %}
-    <nav><a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}"><span>◫</span> Overview</a><a href="/new" class="nav-link {% if request.path == '/new' %}active{% endif %}"><span>＋</span> Create bill</a><a href="/setup" class="nav-link {% if request.path == '/setup' %}active{% endif %}"><span>⚙</span> Company settings</a></nav>
+    <nav><a href="/dashboard" class="nav-link {% if request.path == '/dashboard' %}active{% endif %}"><span>◫</span> Overview</a><a href="/new" class="nav-link {% if request.path == '/new' %}active{% endif %}"><span>＋</span> Create bill</a><a href="/setup" class="nav-link {% if request.path == '/setup' %}active{% endif %}"><span>⚙</span> Company settings</a><a href="/" class="nav-link"><span>▦</span> Switch profile</a></nav>
     <div class="text-controls" aria-label="Display size controls"><span>DISPLAY SIZE</span><div><button type="button" id="text-smaller" aria-label="Decrease text size">A−</button><output id="text-size-value" aria-live="polite">100%</output><button type="button" id="text-larger" aria-label="Increase text size">A+</button></div></div>
     <div class="sidebar-note"><span class="status-dot"></span>Stored on this computer</div>
   </aside>

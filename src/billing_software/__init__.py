@@ -8,6 +8,7 @@ import webbrowser
 from datetime import date
 from pathlib import Path
 from threading import Timer
+from uuid import uuid4
 from xml.sax.saxutils import escape
 
 from flask import Flask, abort, redirect, render_template, request, send_file, url_for
@@ -17,6 +18,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from werkzeug.utils import secure_filename
+from waitress import serve
 
 APP_HOME = Path(os.environ.get("BILLING_SOFTWARE_HOME", Path.home() / ".billing-software"))
 APP_HOME.mkdir(parents=True, exist_ok=True)
@@ -37,9 +39,22 @@ def init_db():
     with db() as con:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id=1), company TEXT NOT NULL DEFAULT '{}', output_dir TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, company TEXT NOT NULL, output_dir TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         INSERT OR IGNORE INTO settings(id) VALUES(1);
         """)
+        setting_columns = {row[1] for row in con.execute("PRAGMA table_info(settings)")}
+        if "active_profile_id" not in setting_columns:
+            con.execute("ALTER TABLE settings ADD COLUMN active_profile_id INTEGER")
+        invoice_columns = {row[1] for row in con.execute("PRAGMA table_info(invoices)")}
+        if "profile_id" not in invoice_columns:
+            con.execute("ALTER TABLE invoices ADD COLUMN profile_id INTEGER")
+        legacy = con.execute("SELECT company, output_dir, active_profile_id FROM settings WHERE id=1").fetchone()
+        profile_count = con.execute("SELECT count(*) FROM profiles").fetchone()[0]
+        if not profile_count and json.loads(legacy["company"]).get("name"):
+            cur = con.execute("INSERT INTO profiles(company,output_dir) VALUES(?,?)", (legacy["company"], legacy["output_dir"]))
+            con.execute("UPDATE settings SET active_profile_id=? WHERE id=1", (cur.lastrowid,))
+            con.execute("UPDATE invoices SET profile_id=? WHERE profile_id IS NULL", (cur.lastrowid,))
 
 
 init_db()
@@ -47,8 +62,28 @@ init_db()
 
 def settings():
     with db() as con:
-        row = con.execute("SELECT * FROM settings WHERE id=1").fetchone()
-    return {"company": json.loads(row["company"]), "output_dir": row["output_dir"]}
+        active = con.execute("SELECT active_profile_id FROM settings WHERE id=1").fetchone()[0]
+        row = con.execute("SELECT * FROM profiles WHERE id=?", (active,)).fetchone() if active else None
+    if not row:
+        return {"company": {}, "output_dir": "", "profile_id": None}
+    return {"company": json.loads(row["company"]), "output_dir": row["output_dir"], "profile_id": row["id"]}
+
+
+def profile_initials(name):
+    words = re.findall(r"[A-Za-z0-9]+", name or "")
+    if len(words) > 1:
+        return "".join(word[0] for word in words[:2]).upper()
+    return (words[0][:2] if words else "?").upper()
+
+
+def profile_cards():
+    with db() as con:
+        rows = con.execute("SELECT id,company FROM profiles ORDER BY id").fetchall()
+    result = []
+    for row in rows:
+        company = json.loads(row["company"])
+        result.append({"id": row["id"], "company": company, "initials": profile_initials(company.get("name", ""))})
+    return result
 
 
 def money(value):
@@ -174,30 +209,56 @@ def make_pdf(path, invoice, company, logo_path=None):
 
 @app.get("/")
 def home():
+    return render_template("profiles.html", cfg=settings(), profiles=profile_cards())
+
+
+@app.post("/select-profile/<int:profile_id>")
+def select_profile(profile_id):
+    with db() as con:
+        exists = con.execute("SELECT 1 FROM profiles WHERE id=?", (profile_id,)).fetchone()
+        if not exists:
+            abort(404)
+        con.execute("UPDATE settings SET active_profile_id=? WHERE id=1", (profile_id,))
+    return redirect(url_for("dashboard"))
+
+
+@app.get("/dashboard")
+def dashboard():
     cfg = settings()
     if not cfg["company"].get("name"):
-        return redirect(url_for("setup"))
+        return redirect(url_for("home"))
     with db() as con:
-        invoices = con.execute("SELECT number, invoice_date, customer, totals FROM invoices ORDER BY id DESC LIMIT 8").fetchall()
-        count = con.execute("SELECT count(*) FROM invoices").fetchone()[0]
-        total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices").fetchone()[0]
+        invoices = con.execute("SELECT number, invoice_date, customer, totals FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 8", (cfg["profile_id"],)).fetchall()
+        count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=?", (cfg["profile_id"],)).fetchone()[0]
+        total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices WHERE profile_id=?", (cfg["profile_id"],)).fetchone()[0]
     return render_template("home.html", cfg=cfg, invoices=[{**dict(x), "customer": json.loads(x["customer"]), "totals": json.loads(x["totals"])} for x in invoices], count=count, total=total)
 
 
 @app.route("/setup", methods=["GET", "POST"])
+@app.route("/setup/new", methods=["GET", "POST"])
 def setup():
-    cfg = settings()
+    is_new = request.path.endswith("/new")
+    current = settings()
+    requested_id = request.args.get("profile_id", type=int)
+    profile_id = None if is_new else (requested_id or current["profile_id"])
+    cfg = {"company": {}, "output_dir": "", "profile_id": None}
+    if profile_id:
+        with db() as con:
+            profile = con.execute("SELECT * FROM profiles WHERE id=?", (profile_id,)).fetchone()
+        if not profile:
+            abort(404)
+        cfg = {"company": json.loads(profile["company"]), "output_dir": profile["output_dir"], "profile_id": profile["id"]}
     if request.method == "POST":
         company = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "phone", "email", "header", "footer")}
         company["bank"] = {k: request.form.get("bank_" + k, "").strip() for k in ("name", "account", "ifsc", "branch")}
         if not company["name"] or not company["gstin"] or not company["address"]:
-            return render_template("setup.html", cfg=cfg, error="Company name, GSTIN, and address are required.")
+            return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Company name, GSTIN, and address are required.")
         logo = request.files.get("logo")
         if logo and logo.filename:
             ext = Path(secure_filename(logo.filename)).suffix.lower()
             if ext not in (".png", ".jpg", ".jpeg"):
-                return render_template("setup.html", cfg=cfg, error="Logo must be a PNG or JPG image.")
-            logo_path = UPLOADS / f"company-logo{ext}"
+                return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Logo must be a PNG or JPG image.")
+            logo_path = UPLOADS / f"company-logo-{uuid4().hex}{ext}"
             logo.save(logo_path)
             company["logo"] = str(logo_path)
         else:
@@ -206,20 +267,26 @@ def setup():
         try:
             out.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            return render_template("setup.html", cfg=cfg, error=f"Could not use that bill folder: {exc}")
+            return render_template("setup.html", cfg=cfg, is_new=not profile_id, error=f"Could not use that bill folder: {exc}")
         with db() as con:
-            con.execute("UPDATE settings SET company=?, output_dir=? WHERE id=1", (json.dumps(company), str(out.resolve())))
-        return redirect(url_for("home"))
-    return render_template("setup.html", cfg=cfg, error=None)
+            if profile_id:
+                con.execute("UPDATE profiles SET company=?, output_dir=? WHERE id=?", (json.dumps(company), str(out.resolve()), profile_id))
+                saved_id = profile_id
+            else:
+                cur = con.execute("INSERT INTO profiles(company,output_dir) VALUES(?,?)", (json.dumps(company), str(out.resolve())))
+                saved_id = cur.lastrowid
+            con.execute("UPDATE settings SET active_profile_id=? WHERE id=1", (saved_id,))
+        return redirect(url_for("dashboard"))
+    return render_template("setup.html", cfg=cfg, is_new=not profile_id, error=None)
 
 
 @app.get("/new")
 def new_invoice():
     cfg = settings()
     if not cfg["company"].get("name"):
-        return redirect(url_for("setup"))
+        return redirect(url_for("home"))
     with db() as con:
-        last = con.execute("SELECT invoice_date FROM invoices ORDER BY id DESC LIMIT 1").fetchone()
+        last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
         next_num = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM invoices").fetchone()[0]
     return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), last_date=last[0] if last else "", preview=f"INV-{date.today().year}-{next_num:04d}", error=None)
 
@@ -244,7 +311,7 @@ def finalize():
         items, totals = totals_for(json.loads(request.form.get("items", "[]")), tax_type, request.form.get("roundoff", 0))
         customer.update({"ship_to": ship_to, "place_of_supply": place_of_supply, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms})
         with db() as con:
-            last = con.execute("SELECT invoice_date FROM invoices ORDER BY id DESC LIMIT 1").fetchone()
+            last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
             if last and invoice_date < last[0]:
                 raise ValueError(f"Bill date cannot be earlier than the last finalized bill ({last[0]}).")
             number = f"INV-{date.fromisoformat(invoice_date).year}-{con.execute('SELECT COALESCE(MAX(id),0)+1 FROM invoices').fetchone()[0]:04d}"
@@ -254,11 +321,11 @@ def finalize():
             pdf_path = output_dir / f"{safe_number}.pdf"
             record = {"number": number, "date": invoice_date, "customer": customer, "ship_to": ship_to, "place_of_supply": place_of_supply, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms, "items": items, "totals": totals}
             make_pdf(pdf_path, record, cfg["company"], cfg["company"].get("logo"))
-            con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path) VALUES(?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path)))
+            con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path,profile_id) VALUES(?,?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path), cfg["profile_id"]))
         return redirect(url_for("bill", invoice_id=number))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         with db() as con:
-            last = con.execute("SELECT invoice_date FROM invoices ORDER BY id DESC LIMIT 1").fetchone()
+            last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
             next_num = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM invoices").fetchone()[0]
         return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), last_date=last[0] if last else "", preview=f"INV-{date.today().year}-{next_num:04d}", error=str(exc)), 400
 
@@ -296,6 +363,18 @@ def company_logo():
     return send_file(logo)
 
 
+@app.get("/profiles/<int:profile_id>/logo")
+def profile_logo(profile_id):
+    with db() as con:
+        row = con.execute("SELECT company FROM profiles WHERE id=?", (profile_id,)).fetchone()
+    if not row:
+        abort(404)
+    logo = json.loads(row[0]).get("logo", "")
+    if not logo or not Path(logo).is_file():
+        abort(404)
+    return send_file(logo)
+
+
 @app.get("/bill/<invoice_id>/company-logo")
 def company_logo_for(invoice_id):
     with db() as con:
@@ -308,8 +387,13 @@ def company_logo_for(invoice_id):
     return send_file(logo)
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return send_file(Path(app.static_folder) / "favicon.svg", mimetype="image/svg+xml")
+
+
 def main():
     port = int(os.environ.get("BILLING_SOFTWARE_PORT", "8765"))
     url = f"http://127.0.0.1:{port}"
     Timer(1.0, lambda: webbrowser.open(url)).start()
-    app.run(host="127.0.0.1", port=port, debug=False)
+    serve(app, host="127.0.0.1", port=port, threads=8, ident="Ledgerline")
