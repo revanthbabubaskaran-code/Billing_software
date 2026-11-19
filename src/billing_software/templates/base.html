@@ -16,6 +16,7 @@
   </aside>
   <main class="main">{% block content %}{% endblock %}</main>
   <script>
+    document.querySelectorAll('input[name="gstin"],input[name="ship_gstin"]').forEach(input=>input.addEventListener("input",()=>{const start=input.selectionStart;input.value=input.value.toUpperCase();if(start!==null)input.setSelectionRange(start,start)}));
     (()=>{const key="ledgerline-display-scale",min=.8,max=1.4,step=.1;let scale=Number(localStorage.getItem(key))||1;const value=document.getElementById("text-size-value"),smaller=document.getElementById("text-smaller"),larger=document.getElementById("text-larger");function apply(){document.body.style.zoom=String(scale);value.value=Math.round(scale*100)+"%";value.textContent=value.value;smaller.disabled=scale<=min;larger.disabled=scale>=max;localStorage.setItem(key,String(scale))}smaller.addEventListener("click",()=>{scale=Math.max(min,Math.round((scale-step)*100)/100);apply()});larger.addEventListener("click",()=>{scale=Math.min(max,Math.round((scale+step)*100)/100);apply()});apply()})();
   </script>
 </body></html>

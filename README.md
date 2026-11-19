@@ -4,15 +4,15 @@ A local billing application for managing one company profile and creating GST in
 
 ## Start the app
 
-Install Python 3.14 and [uv](https://docs.astral.sh/uv/), then double-click `start-billing-software.bat` or run from this folder:
+Install Python 3.14, [uv](https://docs.astral.sh/uv/), and the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), then double-click `start-billing-software.bat` or run from this folder:
 
 ```powershell
 uv run billing-software
 ```
 
-The app opens in your browser at `http://127.0.0.1:8765` and listens only on this computer. The launch screen lets you select a company profile or add another. Each profile has its own company details, optional logo, bill-copy folder, and invoice history. If a profile has no logo, its tile displays initials from the company name. Use **Company settings** to edit the selected profile. Existing single-company data is migrated to the first profile automatically.
+The app opens in its own desktop window and listens only on this computer. It uses the WebView2 runtime inside that window and does not open a separate browser. The launch screen lets you select a company profile or add another. Each profile has its own company details, optional logo, bill-copy folder, and invoice history. If a profile has no logo, its tile displays initials from the company name. Use **Company settings** to edit the selected profile. Existing single-company data is migrated to the first profile automatically.
 
-The app uses Waitress to serve the local interface. It follows the operating system's light or dark appearance setting and adapts its layout for desktop, tablet, and narrow phone screens.
+The app uses Waitress to serve the local interface. GSTIN values are converted to uppercase when entered and saved. It follows the operating system's light or dark appearance setting and adapts its layout for desktop, tablet, and narrow phone screens.
 
 ## Create a bill
 

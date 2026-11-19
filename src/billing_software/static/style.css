@@ -140,3 +140,4 @@
 }
 .profile-select-screen .sidebar{display:block;position:static;width:0;height:0;padding:0;border:0;overflow:visible;background:transparent}
 .profile-select-screen .sidebar>:not(.text-controls){display:none}
+.field input[name="gstin"],.field input[name="ship_gstin"]{text-transform:uppercase}

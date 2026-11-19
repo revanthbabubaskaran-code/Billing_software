@@ -4,10 +4,8 @@ import json
 import os
 import re
 import sqlite3
-import webbrowser
 from datetime import date
 from pathlib import Path
-from threading import Timer
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -66,7 +64,9 @@ def settings():
         row = con.execute("SELECT * FROM profiles WHERE id=?", (active,)).fetchone() if active else None
     if not row:
         return {"company": {}, "output_dir": "", "profile_id": None}
-    return {"company": json.loads(row["company"]), "output_dir": row["output_dir"], "profile_id": row["id"]}
+    company = json.loads(row["company"])
+    company["gstin"] = str(company.get("gstin", "")).strip().upper()
+    return {"company": company, "output_dir": row["output_dir"], "profile_id": row["id"]}
 
 
 def profile_initials(name):
@@ -82,6 +82,7 @@ def profile_cards():
     result = []
     for row in rows:
         company = json.loads(row["company"])
+        company["gstin"] = str(company.get("gstin", "")).strip().upper()
         result.append({"id": row["id"], "company": company, "initials": profile_initials(company.get("name", ""))})
     return result
 
@@ -247,9 +248,12 @@ def setup():
             profile = con.execute("SELECT * FROM profiles WHERE id=?", (profile_id,)).fetchone()
         if not profile:
             abort(404)
-        cfg = {"company": json.loads(profile["company"]), "output_dir": profile["output_dir"], "profile_id": profile["id"]}
+        company = json.loads(profile["company"])
+        company["gstin"] = str(company.get("gstin", "")).strip().upper()
+        cfg = {"company": company, "output_dir": profile["output_dir"], "profile_id": profile["id"]}
     if request.method == "POST":
         company = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "phone", "email", "header", "footer")}
+        company["gstin"] = company["gstin"].upper()
         company["bank"] = {k: request.form.get("bank_" + k, "").strip() for k in ("name", "account", "ifsc", "branch")}
         if not company["name"] or not company["gstin"] or not company["address"]:
             return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Company name, GSTIN, and address are required.")
@@ -296,7 +300,9 @@ def finalize():
     cfg = settings()
     try:
         customer = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "phone")}
+        customer["gstin"] = customer["gstin"].upper()
         ship_to = {k: request.form.get("ship_" + k, "").strip() for k in ("name", "gstin", "address", "phone")}
+        ship_to["gstin"] = ship_to["gstin"].upper()
         place_of_supply = request.form.get("place_of_supply", "").strip()
         tax_type = request.form.get("tax_type", "intra")
         if tax_type not in ("intra", "inter"):
@@ -337,13 +343,17 @@ def bill(invoice_id):
     if not row:
         abort(404)
     customer = json.loads(row["customer"])
+    customer["gstin"] = str(customer.get("gstin", "")).strip().upper()
+    customer.setdefault("ship_to", {})["gstin"] = str(customer.get("ship_to", {}).get("gstin", "")).strip().upper()
     tax_type = customer.get("tax_type", "intra")
     totals = json.loads(row["totals"])
     totals.setdefault("roundoff", 0)
     totals.setdefault("cgst", round(totals.get("tax", 0) / 2, 2) if tax_type == "intra" else 0)
     totals.setdefault("sgst", round(totals.get("tax", 0) - totals["cgst"], 2) if tax_type == "intra" else 0)
     totals.setdefault("igst", totals.get("tax", 0) if tax_type == "inter" else 0)
-    return render_template("bill.html", invoice={**dict(row), "customer": customer, "ship_to": customer.get("ship_to", {}), "place_of_supply": customer.get("place_of_supply", ""), "tax_type": tax_type, "reverse_charge": customer.get("reverse_charge", "No"), "warranty": customer.get("warranty", ""), "terms": customer.get("terms", ""), "items": json.loads(row["items"]), "totals": totals, "amount_words": amount_in_words(totals["total"]), "company": json.loads(row["company_snapshot"])}, cfg=settings())
+    company = json.loads(row["company_snapshot"])
+    company["gstin"] = str(company.get("gstin", "")).strip().upper()
+    return render_template("bill.html", invoice={**dict(row), "customer": customer, "ship_to": customer.get("ship_to", {}), "place_of_supply": customer.get("place_of_supply", ""), "tax_type": tax_type, "reverse_charge": customer.get("reverse_charge", "No"), "warranty": customer.get("warranty", ""), "terms": customer.get("terms", ""), "items": json.loads(row["items"]), "totals": totals, "amount_words": amount_in_words(totals["total"]), "company": company}, cfg=settings())
 
 
 @app.get("/bill/<invoice_id>/pdf")
@@ -395,5 +405,10 @@ def favicon():
 def main():
     port = int(os.environ.get("BILLING_SOFTWARE_PORT", "8765"))
     url = f"http://127.0.0.1:{port}"
-    Timer(1.0, lambda: webbrowser.open(url)).start()
-    serve(app, host="127.0.0.1", port=port, threads=8, ident="Ledgerline")
+    import webview
+    from threading import Thread
+
+    server = Thread(target=lambda: serve(app, host="127.0.0.1", port=port, threads=8, ident="Ledgerline"), daemon=True)
+    server.start()
+    webview.create_window("Ledgerline · GST Billing", url, width=1360, height=900, min_size=(360, 600), resizable=True)
+    webview.start(gui="edgechromium")
