@@ -141,9 +141,9 @@
 .profile-select-screen .sidebar{display:block;position:static;width:0;height:0;padding:0;border:0;overflow:visible;background:transparent}
 .profile-select-screen .sidebar>:not(.text-controls){display:none}
 .field input[name="gstin"],.field input[name="ship_gstin"]{text-transform:uppercase}
-/* Bill typography: Arial for the interface, tabular figures for numeric data */
-body,button,input,select,textarea{font-family:Arial,Helvetica,sans-serif}
-h1,h2,h3,.brand,.brand-mark,.profile-brand,.profile-name{font-family:Arial,Helvetica,sans-serif}
+/* Native Windows UI font with Indic-script fallbacks */
+body,button,input,select,textarea{font-family:"Segoe UI","Nirmala UI","Noto Sans",sans-serif}
+h1,h2,h3,.brand,.brand-mark,.profile-brand,.profile-name{font-family:"Segoe UI","Nirmala UI","Noto Sans",sans-serif}
 body{font-size:16px}
 .eyebrow,.workspace-label,.metric-label,.items-head{font-size:11px}
 .workspace small,.metric-card small,.hint,.profile-edit,.profile-gstin,.sidebar-note{font-size:12px}
@@ -162,6 +162,7 @@ tbody td{font-size:14px;font-variant-numeric:tabular-nums}
 .totals div{font-size:14px;font-variant-numeric:tabular-nums}
 .roundoff-field{font-size:13px}
 .number-preview,.field input[name="gstin"],.field input[name="ship_gstin"]{font-family:"Courier New",monospace;font-variant-numeric:tabular-nums}
+.invoice-link,.amount,.profile-gstin,.paper-table,.paper-tax,.paper-meta{font-variant-numeric:tabular-nums}
 .paper-table,.paper-tax,.paper-meta{font-variant-numeric:tabular-nums}
 .paper-table{font-size:13px}
 .paper-table th{font-size:11px}
@@ -174,12 +175,12 @@ tbody td{font-size:14px;font-variant-numeric:tabular-nums}
 .paper-grand strong{font-size:17px}
 .profile-edit{font-size:12px}
 @media print{
- body,button,input,select,textarea{font-family:Arial,Helvetica,sans-serif!important}
+ body,button,input,select,textarea{font-family:"Segoe UI","Nirmala UI","Noto Sans",sans-serif!important}
  .paper-table td{font-size:10pt!important}
  .paper-tax td{font-size:9pt!important}
  .paper-totals div{font-size:10pt!important}
  .paper-grand strong{font-size:13pt!important}
  .paper-note,.paper-footer{font-size:9pt!important}
 }
-.brand small,.profile-brand small{font-family:Arial,Helvetica,sans-serif;font-size:10px}
+.brand small,.profile-brand small{font-family:"Segoe UI","Nirmala UI","Noto Sans",sans-serif;font-size:10px}
 @media(max-width:640px){.nav-link{font-size:11px}.brand small,.profile-brand small{font-size:9px}.profile-edit,.profile-gstin{font-size:10px}}
