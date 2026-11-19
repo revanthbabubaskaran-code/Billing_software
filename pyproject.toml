@@ -1,10 +1,13 @@
 [project]
 name = "billing-software"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local GST invoicing for small businesses"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "Flask>=3.1,<4",
+    "reportlab>=4.2,<5",
+]
 
 [project.scripts]
 billing-software = "billing_software:main"
