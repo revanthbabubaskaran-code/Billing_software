@@ -147,8 +147,8 @@ def amount_in_words(value):
 def make_pdf(path, invoice, company, logo_path=None):
     doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=17*mm, leftMargin=17*mm, topMargin=15*mm, bottomMargin=15*mm, title=f"Tax invoice {invoice['number']}")
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=8, leading=11, textColor=colors.HexColor("#526174")))
-    styles.add(ParagraphStyle(name="Right", parent=styles["BodyText"], alignment=2))
+    styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=9, leading=12, textColor=colors.HexColor("#526174")))
+    styles.add(ParagraphStyle(name="Right", parent=styles["BodyText"], fontSize=10, alignment=2))
     story = []
     safe = lambda value: escape(str(value or ""))
     if company.get("header"):
@@ -183,7 +183,7 @@ def make_pdf(path, invoice, company, logo_path=None):
     for item in invoice["items"]:
         rows.append([item["description"], item.get("hsn", ""), f"{item['quantity']:g}", item.get("unit", ""), f"{item['rate']:,.2f}", f"{item['taxable']:,.2f}"])
     table = Table(rows, colWidths=[49*mm, 21*mm, 15*mm, 16*mm, 26*mm, 29*mm], repeatRows=1)
-    table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#163A5F")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),("GRID",(0,0),(-1,-1),.4,colors.HexColor("#DCE3EC")),("ALIGN",(1,1),(-1,-1),"RIGHT"),("ALIGN",(0,0),(0,-1),"LEFT"),("VALIGN",(0,0),(-1,-1),"TOP"),("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7)]))
+    table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#163A5F")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),("FONTSIZE",(0,1),(-1,-1),10),("GRID",(0,0),(-1,-1),.4,colors.HexColor("#DCE3EC")),("ALIGN",(1,1),(-1,-1),"RIGHT"),("ALIGN",(0,0),(0,-1),"LEFT"),("VALIGN",(0,0),(-1,-1),"TOP"),("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7)]))
     story += [table, Spacer(1, 3*mm)]
     totals = invoice["totals"]
     tax_rows = [["Tax rate", "Taxable value", "CGST", "SGST", "IGST"]]
@@ -193,11 +193,11 @@ def make_pdf(path, invoice, company, logo_path=None):
         tax_rows.append([f"{rate:g}%", f"INR {taxable:,.2f}", f"INR {sum(item['cgst'] for item in group):,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {sum(item['sgst'] for item in group):,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {sum(item['igst'] for item in group):,.2f}" if invoice["tax_type"] == "inter" else "-"])
     tax_rows.append(["Total", f"INR {totals['taxable']:,.2f}", f"INR {totals['cgst']:,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {totals['sgst']:,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {totals['igst']:,.2f}" if invoice["tax_type"] == "inter" else "-"])
     tax_table = Table(tax_rows, colWidths=[22*mm, 42*mm, 36*mm, 36*mm, 36*mm])
-    tax_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F2F5F9")),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),("LINEBELOW",(0,0),(-1,-1),.4,colors.HexColor("#DCE3EC")),("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]))
+    tax_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F2F5F9")),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),("FONTSIZE",(0,1),(-1,-1),10),("LINEBELOW",(0,0),(-1,-1),.4,colors.HexColor("#DCE3EC")),("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]))
     story += [Paragraph(f"Place of supply: {safe(invoice.get('place_of_supply'))} · {'Intra-state (CGST + SGST)' if invoice['tax_type'] == 'intra' else 'Inter-state (IGST)'} · Reverse charge: {safe(invoice.get('reverse_charge') or 'No')}", styles["Small"]), Spacer(1, 2*mm), tax_table]
     summary_rows = [["Taxable value", f"INR {totals['taxable']:,.2f}"], ["GST total", f"INR {totals['tax']:,.2f}"], ["Round off", f"INR {totals['roundoff']:,.2f}"], ["Grand total", f"INR {totals['total']:,.2f}"]]
     summary = Table(summary_rows, colWidths=[38*mm, 38*mm], hAlign="RIGHT")
-    summary.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"RIGHT"),("FONTNAME",(0,0),(-1,-1),"Helvetica"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("LINEABOVE",(0,-1),(-1,-1),.8,colors.HexColor("#163A5F")),("FONTSIZE",(0,0),(-1,-1),9),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+    summary.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"RIGHT"),("FONTNAME",(0,0),(-1,-1),"Helvetica"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("LINEABOVE",(0,-1),(-1,-1),.8,colors.HexColor("#163A5F")),("FONTSIZE",(0,0),(-1,-2),12),("FONTSIZE",(0,-1),(-1,-1),14),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]))
     story += [Spacer(1, 2*mm), summary, Spacer(1, 3*mm), Paragraph(f"<b>{escape(amount_in_words(totals['total']))}</b>", styles["BodyText"]), Spacer(1, 8*mm), Paragraph("This is a computer-generated tax invoice.", styles["Small"])]
     if invoice.get("warranty"):
         story += [Spacer(1, 2*mm), Paragraph("Warranty: " + safe(invoice["warranty"]), styles["Small"])]
