@@ -12,7 +12,7 @@ uv run billing-software
 
 The app opens in its own desktop window and listens only on this computer. It uses the WebView2 runtime inside that window and does not open a separate browser. The launch screen lets you select a company profile or add another. Each profile has its own company details, optional logo, bill-copy folder, and invoice history. If a profile has no logo, its tile displays initials from the company name. Use **Company settings** to edit the selected profile. Existing single-company data is migrated to the first profile automatically.
 
-The app uses Waitress to serve the local interface. GSTIN values are converted to uppercase when entered and saved. It follows the operating system's light or dark appearance setting and adapts its layout for desktop, tablet, and narrow phone screens.
+The app uses Waitress to serve the local interface. GSTIN values are converted to uppercase when entered and saved. Use the **Appearance** button at the lower left to cycle between automatic OS appearance, dark, and light modes; the choice is remembered in the desktop app. The layout adapts for desktop, tablet, and narrow phone screens.
 
 ## Create a bill
 
