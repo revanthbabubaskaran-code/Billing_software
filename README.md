@@ -4,13 +4,15 @@ A local billing application for managing one company profile and creating GST in
 
 ## Start the app
 
-Install Python 3.14 and [uv](https://docs.astral.sh/uv/), then run from this folder:
+Install Python 3.14 and [uv](https://docs.astral.sh/uv/), then double-click `start-billing-software.bat` or run from this folder:
 
 ```powershell
 uv run billing-software
 ```
 
 The app opens in your browser at `http://127.0.0.1:8765`. It listens only on this computer. On first launch, enter company details and select the folder for bill copies. Use **Company settings** to edit those details or change the destination later.
+
+The app follows the operating system's light or dark appearance setting and adapts its layout for desktop, tablet, and narrow phone screens.
 
 ## Create a bill
 
