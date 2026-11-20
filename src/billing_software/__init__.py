@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+import calendar
 from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -39,7 +40,7 @@ def init_db():
         con.executescript("""
         CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id=1), company TEXT NOT NULL DEFAULT '{}', output_dir TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, company TEXT NOT NULL, output_dir TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS hsn_master (code TEXT PRIMARY KEY, description TEXT NOT NULL, usage TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS hsn_catalog_imports (catalog TEXT PRIMARY KEY, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         INSERT OR IGNORE INTO settings(id) VALUES(1);
@@ -78,6 +79,21 @@ def init_db():
             cur = con.execute("INSERT INTO profiles(company,output_dir) VALUES(?,?)", (legacy["company"], legacy["output_dir"]))
             con.execute("UPDATE settings SET active_profile_id=? WHERE id=1", (cur.lastrowid,))
             con.execute("UPDATE invoices SET profile_id=? WHERE profile_id IS NULL", (cur.lastrowid,))
+        # Earlier versions enforced globally unique visible invoice numbers. Annual
+        # cycles reuse numbers, so migrate that constraint while preserving row IDs.
+        unique_number_index = False
+        for index in con.execute("PRAGMA index_list(invoices)").fetchall():
+            if index["unique"]:
+                columns = [info["name"] for info in con.execute(f"PRAGMA index_info('{index['name']}')").fetchall()]
+                if columns == ["number"]:
+                    unique_number_index = True
+                    break
+        if unique_number_index:
+            con.execute("ALTER TABLE invoices RENAME TO invoices_unique_number_old")
+            con.execute("CREATE TABLE invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0, profile_id INTEGER)")
+            con.execute("INSERT INTO invoices(id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,profile_id) SELECT id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,profile_id FROM invoices_unique_number_old")
+            con.execute("DROP TABLE invoices_unique_number_old")
+        con.execute("CREATE INDEX IF NOT EXISTS invoices_profile_cycle_lookup ON invoices(profile_id,invoice_date,id)")
 
 
 init_db()
@@ -181,14 +197,30 @@ def cancellation_deadline(invoice_date):
     return date(next_year, next_month, 1) - timedelta(days=1)
 
 
-def next_bill_sequence(con, profile_id, company):
-    latest = con.execute("SELECT number FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (profile_id,)).fetchone()
-    if latest:
-        match = re.search(r"(\d+)$", latest["number"])
+def billing_cycle_period(invoice_date, company):
+    if not company.get("billing_cycle_enabled"):
+        return "continuous"
+    issued = date.fromisoformat(str(invoice_date)) if not isinstance(invoice_date, date) else invoice_date
+    month = int(company.get("billing_cycle_month", 4))
+    day = int(company.get("billing_cycle_day", 1))
+    start = date(issued.year, month, day)
+    if issued < start:
+        start = date(issued.year - 1, month, day)
+    return start.isoformat()
+
+
+def next_bill_sequence(con, profile_id, company, invoice_date):
+    period = billing_cycle_period(invoice_date, company)
+    invoices = con.execute("SELECT number,invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC", (profile_id,)).fetchall()
+    for row in invoices:
+        if billing_cycle_period(row["invoice_date"], company) != period:
+            continue
+        match = re.search(r"(\d+)$", row["number"])
         if match:
             return int(match.group(1)) + 1
-    count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=?", (profile_id,)).fetchone()[0]
-    return int(company.get("starting_bill_number", 1)) + count
+    if invoices and company.get("billing_cycle_enabled"):
+        return 1
+    return int(company.get("starting_bill_number", 1))
 
 
 def format_bill_number(company, bill_year, sequence):
@@ -200,12 +232,18 @@ def format_bill_number(company, bill_year, sequence):
     return f"INV-{bill_year}-{sequence:03d}"
 
 
-def next_bill_number(con, profile_id, company, bill_year):
-    sequence = next_bill_sequence(con, profile_id, company)
-    number = format_bill_number(company, bill_year, sequence)
-    while con.execute("SELECT 1 FROM invoices WHERE number=?", (number,)).fetchone():
+def next_bill_number(con, profile_id, company, invoice_date):
+    issued = date.fromisoformat(str(invoice_date)) if not isinstance(invoice_date, date) else invoice_date
+    period = billing_cycle_period(issued, company)
+    sequence = next_bill_sequence(con, profile_id, company, issued)
+    number = format_bill_number(company, issued.year, sequence)
+    existing = con.execute("SELECT number,invoice_date FROM invoices WHERE profile_id=?", (profile_id,)).fetchall()
+    while any(
+        row["number"] == number and billing_cycle_period(row["invoice_date"], company) == period
+        for row in existing
+    ):
         sequence += 1
-        number = format_bill_number(company, bill_year, sequence)
+        number = format_bill_number(company, issued.year, sequence)
     return number
 
 
@@ -360,7 +398,7 @@ def dashboard():
     if not cfg["company"].get("name"):
         return redirect(url_for("home"))
     with db() as con:
-        invoices = con.execute("SELECT number, invoice_date, customer, totals FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC LIMIT 8", (cfg["profile_id"],)).fetchall()
+        invoices = con.execute("SELECT id,number,invoice_date,customer,totals FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC LIMIT 8", (cfg["profile_id"],)).fetchall()
         count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
         total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
     return render_template("home.html", cfg=cfg, invoices=[{**dict(x), "customer": json.loads(x["customer"]), "totals": json.loads(x["totals"])} for x in invoices], count=count, total=total)
@@ -446,6 +484,20 @@ def setup():
         company["invoice_format"] = request.form.get("invoice_format", "inv_year").strip()
         if company["invoice_format"] not in ("number", "padded3", "inv_year"):
             return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Choose a valid invoice number format.")
+        company["billing_cycle_enabled"] = request.form.get("billing_cycle_enabled") == "on"
+        if company["billing_cycle_enabled"]:
+            try:
+                cycle_month = int(request.form.get("billing_cycle_month", "4"))
+                cycle_day = int(request.form.get("billing_cycle_day", "1"))
+                if not 1 <= cycle_month <= 12 or not 1 <= cycle_day <= calendar.monthrange(2001, cycle_month)[1]:
+                    raise ValueError
+            except ValueError:
+                return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Choose a valid recurring billing cycle day and month.")
+            company["billing_cycle_month"] = cycle_month
+            company["billing_cycle_day"] = cycle_day
+        else:
+            company["billing_cycle_month"] = int(cfg["company"].get("billing_cycle_month", 4))
+            company["billing_cycle_day"] = int(cfg["company"].get("billing_cycle_day", 1))
         company["gstin"] = company["gstin"].upper()
         company["bank"] = {k: request.form.get("bank_" + k, "").strip() for k in ("name", "account", "ifsc", "branch")}
         try:
@@ -489,12 +541,28 @@ def new_invoice():
     if not cfg["company"].get("name"):
         return redirect(url_for("home"))
     with db() as con:
-        preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
+        today = date.today()
+        preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], today)
         preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
         last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
-        cancellations = con.execute("SELECT number,invoice_date,customer FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
+        cancellations = con.execute("SELECT id,number,invoice_date,customer FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
     available_cancellations = [dict(row) | {"customer": json.loads(row["customer"])} for row in cancellations if date.today() <= cancellation_deadline(row["invoice_date"])]
-    return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=None, cancellable_count=len(available_cancellations))
+    return render_template("invoice.html", cfg=cfg, today=today.isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=None, cancellable_count=len(available_cancellations))
+
+
+@app.get("/invoice-number-preview")
+def invoice_number_preview():
+    cfg = settings()
+    if not cfg["profile_id"]:
+        abort(404)
+    try:
+        issued = date.fromisoformat(request.args.get("date", ""))
+    except ValueError:
+        return jsonify({"error": "Choose a valid bill date."}), 400
+    with db() as con:
+        number = next_bill_number(con, cfg["profile_id"], cfg["company"], issued)
+    sequence = int(re.search(r"(\d+)$", number).group(1))
+    return jsonify({"number": number, "sequence": sequence})
 
 
 @app.post("/finalize")
@@ -531,7 +599,9 @@ def finalize():
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
             if last and invoice_date < last[0]:
                 raise ValueError(f"Bill date cannot be earlier than the last finalized bill ({last[0]}).")
-            if con.execute("SELECT 1 FROM invoices WHERE number=?", (number,)).fetchone():
+            billing_period = billing_cycle_period(invoice_date, cfg["company"])
+            duplicates = con.execute("SELECT number,invoice_date FROM invoices WHERE profile_id=?", (cfg["profile_id"],)).fetchall()
+            if any(row["number"] == number and billing_cycle_period(row["invoice_date"], cfg["company"]) == billing_period for row in duplicates):
                 raise ValueError("That bill number has already been used. Enter a different bill number.")
             output_dir = Path(cfg["output_dir"] or APP_HOME / "Bills")
             month_dir = output_dir / date.fromisoformat(invoice_date).strftime("%B %Y")
@@ -542,27 +612,24 @@ def finalize():
             pdf_path = month_dir / f"{safe_stem}.pdf"
             record = {"number": number, "date": invoice_date, "customer": customer, "ship_to": ship_to, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms, "items": items, "totals": totals}
             make_pdf(pdf_path, record, cfg["company"], cfg["company"].get("logo"))
-            con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path,profile_id) VALUES(?,?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path), cfg["profile_id"]))
-        return redirect(url_for("bill", invoice_id=number))
+            cur = con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path,profile_id) VALUES(?,?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path), cfg["profile_id"]))
+        return redirect(url_for("bill_record", record_id=cur.lastrowid))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         with db() as con:
-            preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
+            preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today())
             preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
         return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=str(exc), cancellable_count=0), 400
     except Exception as exc:
         app.logger.exception("Bill finalization failed for profile %s", cfg.get("profile_id"))
         with db() as con:
-            preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
+            preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today())
             preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
         return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=f"The bill could not be saved: {exc}", cancellable_count=0), 500
 
 
-@app.get("/bill/<invoice_id>")
-def bill(invoice_id):
-    with db() as con:
-        row = con.execute("SELECT * FROM invoices WHERE number=?", (invoice_id,)).fetchone()
+def render_bill_row(row):
     if not row:
         abort(404)
     customer = json.loads(row["customer"])
@@ -580,11 +647,26 @@ def bill(invoice_id):
     return render_template("bill.html", invoice={**dict(row), "customer": customer, "ship_to": customer.get("ship_to", {}), "place_of_supply": customer.get("place_of_supply", ""), "tax_type": tax_type, "reverse_charge": customer.get("reverse_charge", "No"), "warranty": customer.get("warranty", ""), "terms": customer.get("terms", ""), "items": json.loads(row["items"]), "totals": totals, "amount_words": amount_in_words(totals["total"]), "company": company, "can_cancel": can_cancel}, cfg=settings())
 
 
+@app.get("/bill/record/<int:record_id>")
+def bill_record(record_id):
+    with db() as con:
+        row = con.execute("SELECT * FROM invoices WHERE id=?", (record_id,)).fetchone()
+    return render_bill_row(row)
+
+
+@app.get("/bill/<invoice_id>")
+def bill(invoice_id):
+    # Keep old visible-number links working; the app's own links use the row ID.
+    with db() as con:
+        row = con.execute("SELECT * FROM invoices WHERE number=? ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
+    return render_bill_row(row)
+
+
 @app.get("/cancellations")
 def cancellations():
     cfg = settings()
     with db() as con:
-        rows = con.execute("SELECT number,invoice_date,customer,pdf_path FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
+        rows = con.execute("SELECT id,number,invoice_date,customer,pdf_path FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
     bills = []
     for row in rows:
         deadline = cancellation_deadline(row["invoice_date"])
@@ -593,15 +675,14 @@ def cancellations():
     return render_template("cancellations.html", cfg=cfg, bills=bills)
 
 
-@app.post("/bill/<invoice_id>/cancel")
-def cancel_bill(invoice_id):
+def cancel_invoice_record(record_id):
     cfg = settings()
     with db() as con:
-        row = con.execute("SELECT * FROM invoices WHERE number=? AND profile_id=?", (invoice_id, cfg["profile_id"])).fetchone()
+        row = con.execute("SELECT * FROM invoices WHERE id=? AND profile_id=?", (record_id, cfg["profile_id"])).fetchone()
         if not row:
             abort(404)
         if row["cancelled"]:
-            return redirect(url_for("bill", invoice_id=invoice_id))
+            return redirect(url_for("bill_record", record_id=record_id))
         if date.today() > cancellation_deadline(row["invoice_date"]):
             abort(410, description="The cancellation period for this bill has ended.")
         customer = json.loads(row["customer"])
@@ -615,16 +696,40 @@ def cancel_bill(invoice_id):
         invoice_record = {"number": row["number"], "date": row["invoice_date"], "customer": customer, "ship_to": customer.get("ship_to", {}), "place_of_supply": customer.get("place_of_supply", ""), "tax_type": tax_type, "reverse_charge": customer.get("reverse_charge", "No"), "warranty": customer.get("warranty", ""), "terms": customer.get("terms", ""), "items": json.loads(row["items"]), "totals": totals}
         make_pdf(row["pdf_path"], invoice_record, company, company.get("logo"), cancelled=True)
         con.execute("UPDATE invoices SET cancelled=1 WHERE id=?", (row["id"],))
-    return redirect(url_for("bill", invoice_id=invoice_id))
+    return redirect(url_for("bill_record", record_id=record_id))
+
+
+@app.post("/bill/record/<int:record_id>/cancel")
+def cancel_bill_record(record_id):
+    return cancel_invoice_record(record_id)
+
+
+@app.post("/bill/<invoice_id>/cancel")
+def cancel_bill(invoice_id):
+    cfg = settings()
+    with db() as con:
+        row = con.execute("SELECT id FROM invoices WHERE number=? AND profile_id=? ORDER BY id DESC LIMIT 1", (invoice_id, cfg["profile_id"])).fetchone()
+    if not row:
+        abort(404)
+    return cancel_invoice_record(row["id"])
 
 
 @app.get("/bill/<invoice_id>/pdf")
 def pdf(invoice_id):
     with db() as con:
-        row = con.execute("SELECT pdf_path FROM invoices WHERE number=?", (invoice_id,)).fetchone()
+        row = con.execute("SELECT pdf_path FROM invoices WHERE number=? ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
     if not row or not Path(row[0]).is_file():
         abort(404)
     return send_file(row[0], mimetype="application/pdf", as_attachment=False, download_name=f"{invoice_id}.pdf")
+
+
+@app.get("/bill/record/<int:record_id>/pdf")
+def pdf_record(record_id):
+    with db() as con:
+        row = con.execute("SELECT number,pdf_path FROM invoices WHERE id=?", (record_id,)).fetchone()
+    if not row or not Path(row["pdf_path"]).is_file():
+        abort(404)
+    return send_file(row["pdf_path"], mimetype="application/pdf", as_attachment=False, download_name=f"{row['number']}.pdf")
 
 
 @app.get("/company-logo")
@@ -650,7 +755,19 @@ def profile_logo(profile_id):
 @app.get("/bill/<invoice_id>/company-logo")
 def company_logo_for(invoice_id):
     with db() as con:
-        row = con.execute("SELECT company_snapshot FROM invoices WHERE number=?", (invoice_id,)).fetchone()
+        row = con.execute("SELECT company_snapshot FROM invoices WHERE number=? ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
+    if not row:
+        abort(404)
+    logo = json.loads(row[0]).get("logo", "")
+    if not logo or not Path(logo).is_file():
+        abort(404)
+    return send_file(logo)
+
+
+@app.get("/bill/record/<int:record_id>/company-logo")
+def company_logo_record(record_id):
+    with db() as con:
+        row = con.execute("SELECT company_snapshot FROM invoices WHERE id=?", (record_id,)).fetchone()
     if not row:
         abort(404)
     logo = json.loads(row[0]).get("logo", "")
