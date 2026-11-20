@@ -50,6 +50,7 @@
     {"code":"8471","description":"Automatic data processing machines and units thereof","usage":"Computers and qualifying data-processing units; assess the complete system and function."},
     {"code":"8501","description":"Electric motors and generators, excluding generating sets","usage":"Electric motors and generators; check output, type and intended application."},
     {"code":"8504","description":"Electrical transformers, static converters and inductors","usage":"Transformers, power supplies and static converters; verify equipment type."},
+    {"code":"8506","description":"Primary cells and primary batteries","usage":"Non-rechargeable primary cells and batteries; examples include alkaline, zinc-carbon and lithium primary cells."},
     {"code":"8507","description":"Electric accumulators, including separators therefor, whether or not rectangular","usage":"Rechargeable batteries and accumulators; chemistry and use may determine subheading."},
     {"code":"8517","description":"Telephone sets and other apparatus for transmission or reception of voice, images or other data","usage":"Telephones, network and communication apparatus; check product features."},
     {"code":"8528","description":"Monitors and projectors, not incorporating television reception apparatus; television reception apparatus","usage":"Computer monitors, projectors and television receivers; check functionality."},
