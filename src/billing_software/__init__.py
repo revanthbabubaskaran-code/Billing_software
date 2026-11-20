@@ -311,6 +311,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     styles.add(ParagraphStyle(name="InvoicePartyName", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceGrand", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=14, leading=17, alignment=2, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceColumnHeading", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5, leading=11, alignment=1, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceAmountWords", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11.5, leading=14, textColor=colors.black))
     story = []
     safe = lambda value: escape(str(value or ""))
     content_width = A4[0] - 34*mm
@@ -403,7 +404,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     tax_table.setStyle(TableStyle(tax_style))
     grand = Table([[Paragraph("Grand total:", styles["InvoiceGrand"]), Paragraph(f"Rs. {totals['total']:,.2f}", styles["InvoiceGrand"])]], colWidths=[content_width-54*mm,54*mm], hAlign="RIGHT")
     grand.setStyle(TableStyle([("LINEABOVE",(0,0),(-1,0),.7,colors.black),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
-    words = Paragraph("<b>" + safe(amount_in_words(totals["total"])) + "</b>", styles["InvoiceSmall"])
+    words = Paragraph(safe(amount_in_words(totals["total"])), styles["InvoiceAmountWords"])
     story += [tax_table, grand, Table([[words]], colWidths=[content_width], hAlign="RIGHT", style=TableStyle([("ALIGN",(0,0),(-1,-1),"RIGHT"), ("TOPPADDING",(0,0),(-1,-1),1), ("BOTTOMPADDING",(0,0),(-1,-1),2)]))]
     bank = company.get("bank") or {}
     reserve_width = content_width/2
