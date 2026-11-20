@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
-from flask import Flask, abort, redirect, render_template, request, send_file, url_for
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -40,8 +40,24 @@ def init_db():
         CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id=1), company TEXT NOT NULL DEFAULT '{}', output_dir TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, company TEXT NOT NULL, output_dir TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS hsn_master (code TEXT PRIMARY KEY, description TEXT NOT NULL, usage TEXT NOT NULL DEFAULT '');
         INSERT OR IGNORE INTO settings(id) VALUES(1);
         """)
+        hsn_seed = [
+            ("8423", "Weighing machinery, including scales, weighbridges and weighing parts", "Trade, platform, table and industrial weighing equipment"),
+            ("9031", "Other measuring or checking instruments and appliances", "Measurement or checking instruments not classified under a more specific heading"),
+            ("8504", "Electrical transformers and static converters", "Power adapters, transformers and conversion equipment; confirm the product's specific classification"),
+            ("8507", "Electric accumulators", "Rechargeable batteries and battery packs"),
+            ("8536", "Electrical apparatus for switching or protecting circuits and making connections", "Switches, relays, fuses, plugs, sockets and connectors"),
+            ("8537", "Boards, panels and bases equipped for electric control or distribution", "Electrical control and distribution panels"),
+            ("8544", "Insulated wire, cable and other insulated electrical conductors", "Electrical cables and insulated wiring"),
+            ("7318", "Screws, bolts, nuts, washers and similar iron or steel fasteners", "Fasteners and mounting hardware"),
+            ("7326", "Other articles of iron or steel", "Fabricated iron or steel articles not covered by a more specific heading"),
+            ("3926", "Other articles of plastics", "Plastic articles not covered by a more specific heading"),
+            ("4016", "Other articles of vulcanised rubber", "Rubber articles such as pads or feet, subject to product details"),
+            ("8483", "Transmission shafts, gears, bearings and related transmission elements", "Mechanical power-transmission components"),
+        ]
+        con.executemany("INSERT OR IGNORE INTO hsn_master(code,description,usage) VALUES(?,?,?)", hsn_seed)
         setting_columns = {row[1] for row in con.execute("PRAGMA table_info(settings)")}
         if "active_profile_id" not in setting_columns:
             con.execute("ALTER TABLE settings ADD COLUMN active_profile_id INTEGER")
@@ -300,6 +316,37 @@ def dashboard():
         count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
         total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
     return render_template("home.html", cfg=cfg, invoices=[{**dict(x), "customer": json.loads(x["customer"]), "totals": json.loads(x["totals"])} for x in invoices], count=count, total=total)
+
+
+@app.route("/hsn-master", methods=["GET", "POST"])
+def hsn_master():
+    error = None
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        description = request.form.get("description", "").strip()
+        usage = request.form.get("usage", "").strip()
+        if not re.fullmatch(r"\d{4}", code):
+            error = "Enter a four-digit HSN heading."
+        elif not description or not usage:
+            error = "Add both a description and a suggested use."
+        else:
+            with db() as con:
+                con.execute("INSERT INTO hsn_master(code,description,usage) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET description=excluded.description, usage=excluded.usage", (code, description, usage))
+            return redirect(url_for("hsn_master"))
+    with db() as con:
+        codes = con.execute("SELECT code,description,usage FROM hsn_master ORDER BY code").fetchall()
+    return render_template("hsn_master.html", cfg=settings(), codes=codes, error=error)
+
+
+@app.get("/hsn-suggest")
+def hsn_suggest():
+    query = request.args.get("q", "").strip().lower()
+    if len(query) < 3:
+        return jsonify([])
+    pattern = f"%{query}%"
+    with db() as con:
+        rows = con.execute("SELECT code,description,usage FROM hsn_master WHERE code LIKE ? OR lower(description) LIKE ? OR lower(usage) LIKE ? ORDER BY CASE WHEN code=? THEN 0 WHEN code LIKE ? THEN 1 ELSE 2 END, code LIMIT 12", (pattern, pattern, pattern, query, f"{query}%")).fetchall()
+    return jsonify([dict(row) for row in rows])
 
 
 @app.route("/setup", methods=["GET", "POST"])
