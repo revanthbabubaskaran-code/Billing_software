@@ -308,6 +308,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     styles.add(ParagraphStyle(name="InvoiceContact", parent=styles["BodyText"], fontSize=8.5, leading=10, alignment=0, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceContactCenter", parent=styles["InvoiceContact"], alignment=1))
     styles.add(ParagraphStyle(name="InvoiceContactRight", parent=styles["InvoiceContact"], alignment=2))
+    styles.add(ParagraphStyle(name="InvoiceFooter", parent=styles["InvoiceSmall"], alignment=1))
     styles.add(ParagraphStyle(name="InvoicePartyName", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceGrand", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=14, leading=17, alignment=2, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceColumnHeading", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5, leading=11, alignment=1, textColor=colors.black))
@@ -431,9 +432,9 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     details.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
     story += [Spacer(1,2*mm), details]
     if company.get("footer"):
-        story += [Spacer(1, 1*mm), Paragraph(safe(company["footer"]), styles["InvoiceSmall"])]
+        story += [Spacer(1, 1*mm), Paragraph(safe(company["footer"]), styles["InvoiceFooter"])]
     elif company.get("header"):
-        story += [Spacer(1, 1*mm), Paragraph("This is a computer-generated tax invoice.", styles["InvoiceSmall"])]
+        story += [Spacer(1, 1*mm), Paragraph("This is a computer-generated tax invoice.", styles["InvoiceFooter"])]
     doc.build(story, onFirstPage=draw_page, onLaterPages=draw_page)
 
 
