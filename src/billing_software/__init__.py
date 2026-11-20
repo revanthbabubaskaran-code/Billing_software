@@ -569,6 +569,7 @@ def invoice_number_preview():
 @app.post("/finalize")
 def finalize():
     cfg = settings()
+    save_stage = "reading bill details"
     try:
         customer = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "district", "pincode", "phone")}
         customer["gstin"] = customer["gstin"].upper()
@@ -589,6 +590,7 @@ def finalize():
         if not customer["name"] or not customer["address"]:
             raise ValueError("Customer name and address are required.")
         date.fromisoformat(invoice_date)
+        save_stage = "calculating bill totals"
         items, totals = totals_for(json.loads(request.form.get("items", "[]")), tax_type, request.form.get("roundoff", 0))
         if request.form.get("same_shipping_address") == "on":
             ship_to.update({"name": customer["name"], "phone": customer["phone"], "address": customer["address"], "district": customer["district"], "pincode": customer["pincode"]})
@@ -596,6 +598,7 @@ def finalize():
             if pin and not re.fullmatch(r"\d{6}", pin):
                 raise ValueError("Enter a six-digit pincode, or leave the field blank.")
         customer.update({"ship_to": ship_to, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms})
+        save_stage = "checking invoice date and number"
         with db() as con:
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
             if last and invoice_date < last[0]:
@@ -612,7 +615,9 @@ def finalize():
             safe_stem = re.sub(r"[^A-Za-z0-9_-]", "", f"{address_label}_{number}")
             pdf_path = month_dir / f"{safe_stem}.pdf"
             record = {"number": number, "date": invoice_date, "customer": customer, "ship_to": ship_to, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms, "items": items, "totals": totals}
+            save_stage = "rendering the PDF copy"
             make_pdf(pdf_path, record, cfg["company"], cfg["company"].get("logo"))
+            save_stage = "saving the bill record"
             cur = con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path,profile_id) VALUES(?,?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path), cfg["profile_id"]))
         return redirect(url_for("bill_record", record_id=cur.lastrowid))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -622,12 +627,12 @@ def finalize():
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
         return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=str(exc), cancellable_count=0), 400
     except Exception as exc:
-        app.logger.exception("Bill finalization failed for profile %s", cfg.get("profile_id"))
+        app.logger.exception("Bill finalization failed during %s for profile %s", save_stage, cfg.get("profile_id"))
         with db() as con:
             preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today())
             preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
-        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=f"The bill could not be saved: {exc}", cancellable_count=0), 500
+        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=f"The bill could not be saved while {save_stage}: {exc}", cancellable_count=0), 500
 
 
 def render_bill_row(row):
