@@ -321,7 +321,8 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     company_name = safe(company_name_text)
     address_text = str(company.get("address") or "")
     address = safe(address_text).replace("\n", "<br/>")
-    company_info_width = content_width-32*mm
+    has_logo = bool(logo_path and Path(logo_path).is_file())
+    company_info_width = content_width-64*mm if has_logo else content_width
     address_line_width = max((stringWidth(line, "Helvetica", 9.5) for line in address_text.splitlines() if line.strip()), default=company_info_width)
     company_target_width = min(company_info_width-2*mm, address_line_width)
     company_font_size = min(40, max(10, company_target_width / max(1, stringWidth(company_name_text, "Helvetica-Bold", 1))))
@@ -331,8 +332,8 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     if logo_path and Path(logo_path).is_file():
         try:
             logo = Image(logo_path, width=29*mm, height=23*mm, kind="proportional")
-            header = Table([[logo, company_info]], colWidths=[32*mm, content_width-32*mm], hAlign="LEFT")
-            header.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("RIGHTPADDING",(0,0),(0,0),4),("LEFTPADDING",(1,0),(1,0),4),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1)]))
+            header = Table([[logo, company_info, ""]], colWidths=[32*mm, content_width-64*mm, 32*mm], hAlign="LEFT")
+            header.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("RIGHTPADDING",(0,0),(0,0),4),("LEFTPADDING",(1,0),(1,0),2),("RIGHTPADDING",(1,0),(1,0),2),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1)]))
         except Exception:
             header = company_info
     else:
