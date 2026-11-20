@@ -528,4 +528,3 @@ def main():
     server.start()
     webview.create_window("Ledgerline · GST Billing", url, width=1360, height=900, min_size=(360, 600), resizable=True)
     webview.start(gui="edgechromium")
-
