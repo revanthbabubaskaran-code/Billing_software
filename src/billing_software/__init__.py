@@ -41,23 +41,21 @@ def init_db():
         CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, company TEXT NOT NULL, output_dir TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS hsn_master (code TEXT PRIMARY KEY, description TEXT NOT NULL, usage TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS hsn_catalog_imports (catalog TEXT PRIMARY KEY, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         INSERT OR IGNORE INTO settings(id) VALUES(1);
         """)
-        hsn_seed = [
-            ("8423", "Weighing machinery, including scales, weighbridges and weighing parts", "Trade, platform, table and industrial weighing equipment"),
-            ("9031", "Other measuring or checking instruments and appliances", "Measurement or checking instruments not classified under a more specific heading"),
-            ("8504", "Electrical transformers and static converters", "Power adapters, transformers and conversion equipment; confirm the product's specific classification"),
-            ("8507", "Electric accumulators", "Rechargeable batteries and battery packs"),
-            ("8536", "Electrical apparatus for switching or protecting circuits and making connections", "Switches, relays, fuses, plugs, sockets and connectors"),
-            ("8537", "Boards, panels and bases equipped for electric control or distribution", "Electrical control and distribution panels"),
-            ("8544", "Insulated wire, cable and other insulated electrical conductors", "Electrical cables and insulated wiring"),
-            ("7318", "Screws, bolts, nuts, washers and similar iron or steel fasteners", "Fasteners and mounting hardware"),
-            ("7326", "Other articles of iron or steel", "Fabricated iron or steel articles not covered by a more specific heading"),
-            ("3926", "Other articles of plastics", "Plastic articles not covered by a more specific heading"),
-            ("4016", "Other articles of vulcanised rubber", "Rubber articles such as pads or feet, subject to product details"),
-            ("8483", "Transmission shafts, gears, bearings and related transmission elements", "Mechanical power-transmission components"),
-        ]
-        con.executemany("INSERT OR IGNORE INTO hsn_master(code,description,usage) VALUES(?,?,?)", hsn_seed)
+        # Import the bundled, GSTN/CBIC-sourced starter headings once. The separate
+        # marker lets users edit the master later without startup overwriting edits.
+        if not con.execute("SELECT 1 FROM hsn_catalog_imports WHERE catalog='india-gst-hsn-starter-2026-11'").fetchone():
+            catalog_path = Path(__file__).with_name("data") / "hsn_starter.json"
+            if catalog_path.exists():
+                catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+                con.executemany(
+                    "INSERT INTO hsn_master(code,description,usage) VALUES(?,?,?) "
+                    "ON CONFLICT(code) DO UPDATE SET description=excluded.description, usage=excluded.usage",
+                    [(item["code"], item["description"], item["usage"]) for item in catalog["entries"]],
+                )
+                con.execute("INSERT INTO hsn_catalog_imports(catalog) VALUES('india-gst-hsn-starter-2026-11')")
         setting_columns = {row[1] for row in con.execute("PRAGMA table_info(settings)")}
         if "active_profile_id" not in setting_columns:
             con.execute("ALTER TABLE settings ADD COLUMN active_profile_id INTEGER")
@@ -582,3 +580,4 @@ def main():
     server.start()
     webview.create_window("Ledgerline · GST Billing", url, width=1360, height=900, min_size=(360, 600), resizable=True)
     webview.start(gui="edgechromium")
+
