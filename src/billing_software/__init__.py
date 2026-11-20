@@ -312,6 +312,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     styles.add(ParagraphStyle(name="InvoiceGrand", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=14, leading=17, alignment=2, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceColumnHeading", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5, leading=11, alignment=1, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceAmountWords", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11.5, leading=14, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceBankTitle", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11.5, leading=14, textColor=colors.black))
     story = []
     safe = lambda value: escape(str(value or ""))
     content_width = A4[0] - 34*mm
@@ -416,7 +417,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         ]
         bank_table = Table(bank_rows, colWidths=[content_width/2,content_width/2])
         bank_table.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.45,colors.black),("INNERGRID",(0,0),(-1,-1),.35,colors.black),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
-        story += [Spacer(1,2*mm), Paragraph("<b>Bank Details</b>", styles["InvoiceSmall"]), bank_table, Spacer(1,2*mm)]
+        story += [Spacer(1,2*mm), Paragraph("Bank Details", styles["InvoiceBankTitle"]), bank_table, Spacer(1,2*mm)]
     if invoice.get("terms"):
         left_details.append(Paragraph("<b>Terms &amp; Conditions</b><br/>" + safe(invoice.get("terms")).replace("\n", "<br/>"), styles["InvoiceSmall"]))
     signing_name = safe(company.get("name") or "")
