@@ -170,16 +170,17 @@ def amount_in_words(value):
             return words + (" " + under_thousand(remainder) if remainder else "")
         words = []
         if number >= 100:
-            words.extend((ones[number // 100], "Hundred"))
+            words.extend((ones[min(number // 100, 9)], "Hundred"))
             number %= 100
         if number >= 20:
-            words.append(tens[number // 10])
+            words.append(tens[min(number // 10, 9)])
             number %= 10
-        if number:
-            words.append(ones[number])
+        if number > 0:
+            words.append(ones[min(number, 19)])
         return " ".join(words)
     amount = int(round(float(value) * 100))
-    rupees, paise = divmod(amount, 100)
+    sign = "Minus " if amount < 0 else ""
+    rupees, paise = divmod(abs(amount), 100)
     parts = []
     for size, label in ((10000000, "Crore"), (100000, "Lakh"), (1000, "Thousand"), (1, "")):
         count, rupees = divmod(rupees, size)
@@ -187,8 +188,8 @@ def amount_in_words(value):
             parts.extend((under_thousand(count), label) if label else (under_thousand(count),))
     words = " ".join(parts) or "Zero"
     if paise:
-        return f"Rupees {words} and {under_thousand(paise)} Paise only"
-    return f"Rupees {words} only"
+        return f"{sign}Rupees {words} and {under_thousand(paise)} Paise only"
+    return f"{sign}Rupees {words} only"
 
 
 def cancellation_deadline(invoice_date):
