@@ -58,6 +58,12 @@ def init_db():
                 con.execute("INSERT INTO hsn_catalog_imports(catalog) VALUES('india-gst-hsn-starter-2026-11')")
         # Add the commonly used battery heading without replacing a user's local edit.
         con.execute("INSERT OR IGNORE INTO hsn_master(code,description,usage) VALUES(?,?,?)", ("8506", "Primary cells and primary batteries", "Non-rechargeable primary cells and batteries; examples include alkaline, zinc-carbon and lithium primary cells."))
+        sample_headings = [
+            ("9987", "Maintenance, repair and installation services (except construction)", "Sample bill examples: P/S service charges, E/W/S service charges, stamping and other expenses; verify the exact SAC for the service."),
+            ("8541", "Semiconductor devices and photosensitive semiconductor devices", "Sample bill uses this for Display; check whether the item is a display component or a complete display unit."),
+            ("8534", "Printed circuits", "Sample bill uses this for Mother Board; confirm whether the item is a printed circuit board or a complete assembly."),
+        ]
+        con.executemany("INSERT OR IGNORE INTO hsn_master(code,description,usage) VALUES(?,?,?)", sample_headings)
         setting_columns = {row[1] for row in con.execute("PRAGMA table_info(settings)")}
         if "active_profile_id" not in setting_columns:
             con.execute("ALTER TABLE settings ADD COLUMN active_profile_id INTEGER")
@@ -140,6 +146,12 @@ def amount_in_words(value):
     ones = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen")
     tens = ("", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety")
     def under_thousand(number):
+        # Crore groups can themselves exceed 999 on large invoices. Split them
+        # recursively before indexing the hundreds/tens word tables.
+        if number >= 1000:
+            thousands, remainder = divmod(number, 1000)
+            words = under_thousand(thousands) + " Thousand"
+            return words + (" " + under_thousand(remainder) if remainder else "")
         words = []
         if number >= 100:
             words.extend((ones[number // 100], "Hundred"))
@@ -382,10 +394,34 @@ def hsn_suggest():
     pattern = f"%{query}%"
     with db() as con:
         rows = con.execute("SELECT code,description,usage FROM hsn_master WHERE code LIKE ? OR lower(description) LIKE ? OR lower(usage) LIKE ? ORDER BY CASE WHEN code=? THEN 0 WHEN code LIKE ? THEN 1 ELSE 2 END, code LIMIT 12", (pattern, pattern, pattern, query, f"{query}%")).fetchall()
+        preferred_codes = []
         if "batter" in query:
-            battery_rows = con.execute("SELECT code,description,usage FROM hsn_master WHERE code IN ('8506','8507') ORDER BY code").fetchall()
-            seen = {row["code"] for row in rows}
-            rows = list(rows) + [row for row in battery_rows if row["code"] not in seen]
+            preferred_codes.extend(("8507", "8506"))
+        if "powercord" in query or "power cord" in query or "power-cord" in query:
+            preferred_codes.append("8544")
+        if "transformer" in query:
+            preferred_codes.append("8504")
+        if "display" in query:
+            preferred_codes.append("8541")
+        if "motherboard" in query or "mother board" in query:
+            preferred_codes.append("8534")
+        if "loadcell" in query or "load cell" in query:
+            preferred_codes.append("8423")
+        if "switch" in query:
+            preferred_codes.append("8536")
+        if (("service" in query and "charge" in query) or "stamping" in query
+                or "p/s" in query or "e/w/s" in query or "other expenses" in query):
+            preferred_codes.append("9987")
+        if preferred_codes:
+            preferred_codes = list(dict.fromkeys(preferred_codes))
+            preferred_rows = con.execute(
+                f"SELECT code,description,usage FROM hsn_master WHERE code IN ({','.join('?' for _ in preferred_codes)})",
+                tuple(preferred_codes),
+            ).fetchall()
+            by_code = {row["code"]: row for row in preferred_rows}
+            ordered = [by_code[code] for code in preferred_codes if code in by_code]
+            seen = {row["code"] for row in ordered}
+            rows = ordered + [row for row in rows if row["code"] not in seen]
     return jsonify([dict(row) for row in rows])
 
 
