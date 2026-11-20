@@ -413,9 +413,9 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         try:
             signing_space += [Image(signature_path, width=38*mm, height=14*mm, kind="proportional"), Paragraph("Digitally signed", styles["InvoiceMetaRight"]), Spacer(1, 2*mm)]
         except Exception:
-            signing_space.append(Paragraph("________________________", styles["InvoiceMetaRight"]))
+            signing_space.append(Spacer(1, 16*mm))
     else:
-        signing_space += [Paragraph("________________________", styles["InvoiceMetaRight"]), Spacer(1, 2*mm)]
+        signing_space.append(Spacer(1, 16*mm))
     signing_space.append(Paragraph("Authorized Signatory", styles["InvoiceMetaRight"]))
     detail_cells = [[left_details, signing_space]]
     details = Table(detail_cells, colWidths=[reserve_width,reserve_width], hAlign="LEFT")
