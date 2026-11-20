@@ -253,7 +253,7 @@ def next_bill_number(con, profile_id, company, invoice_date):
 def invoice_address(details):
     lines = [str(details.get("address", "")).strip()]
     if details.get("district"):
-        lines.append("District: " + str(details["district"]).strip())
+        lines.append(str(details["district"]).strip())
     if details.get("pincode"):
         lines.append("PIN: " + str(details["pincode"]).strip())
     return "\n".join(line for line in lines if line)
