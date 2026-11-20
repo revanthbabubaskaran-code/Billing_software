@@ -363,7 +363,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         item_rows.append([str(index), Paragraph(safe(item.get("description")), styles["InvoiceSmall"]), safe(item.get("hsn")), f"{item['quantity']:g}", safe(item.get("unit")), f"{item['rate']:,.2f}", f"{item['taxable']:,.2f}"])
     item_widths = [10*mm, 59*mm, 23*mm, 14*mm, 13*mm, 27*mm, 30*mm]
     item_table = Table(item_rows, colWidths=item_widths, repeatRows=1)
-    item_table_style = [("BACKGROUND",(0,0),(-1,0),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7.2),("BOX",(0,0),(-1,-1),.55,colors.black),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),("ALIGN",(5,1),(-1,-1),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]
+    item_table_style = [("BACKGROUND",(0,0),(-1,0),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7.2),("BOX",(0,0),(-1,-1),.55,colors.black),("LINEBELOW",(0,0),(-1,0),.55,colors.black),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),("ALIGN",(5,1),(-1,-1),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]
     item_table_style.extend(("LINEBEFORE",(column,0),(column,-1),.4,colors.black) for column in range(1,len(item_widths)))
     item_table.setStyle(TableStyle(item_table_style))
     story += [item_table, Spacer(1, 2*mm)]
@@ -400,9 +400,9 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
             [Paragraph("<b>Bank name:</b> " + safe(bank.get("name") or "-Nil-"), styles["InvoiceSmall"]), Paragraph("<b>Account no.:</b> " + safe(bank.get("account") or "-Nil-"), styles["InvoiceSmall"])],
             [Paragraph("<b>IFSC code:</b> " + safe(bank.get("ifsc") or "-Nil-"), styles["InvoiceSmall"]), Paragraph("<b>Branch:</b> " + safe(bank.get("branch") or "-Nil-"), styles["InvoiceSmall"])],
         ]
-        bank_table = Table(bank_rows, colWidths=[reserve_width/2,reserve_width/2])
+        bank_table = Table(bank_rows, colWidths=[content_width/2,content_width/2])
         bank_table.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.45,colors.black),("INNERGRID",(0,0),(-1,-1),.35,colors.black),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
-        left_details.extend([Paragraph("<b>Bank Details</b>", styles["InvoiceSmall"]), bank_table, Spacer(1,2*mm)])
+        story += [Spacer(1,2*mm), Paragraph("<b>Bank Details</b>", styles["InvoiceSmall"]), bank_table, Spacer(1,2*mm)]
     if invoice.get("terms"):
         left_details.append(Paragraph("<b>Terms &amp; Conditions</b><br/>" + safe(invoice.get("terms")).replace("\n", "<br/>"), styles["InvoiceSmall"]))
     signing_name = safe(company.get("name") or "")
