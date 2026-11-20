@@ -1,6 +1,6 @@
 # Ledgerline · GST Billing Desk
 
-A local billing application for managing one company profile and creating GST invoices. Company details and finalized bill records are stored in a SQLite database on this computer. Each finalized bill is also rendered as a PDF in the folder selected in Company settings.
+A local billing application for managing company profiles and creating GST invoices. Company details and finalized bill records are stored in a SQLite database on this computer. Each finalized bill is also rendered as a PDF in the folder selected in Company settings.
 
 ## Start the app
 
@@ -20,7 +20,7 @@ The editable HSN master is seeded once from the bundled four-digit starter catal
 
 Enter customer and optional ship-to details, place of supply, reverse-charge status, and invoice terms. Add line items with optional HSN/SAC codes and units, quantities, rates, and GST rates. Choose intra-state (CGST plus SGST) or inter-state (IGST) tax treatment. The app shows a tax-rate summary, editable round-off, grand total, and amount in words. The company profile can include phone and email, in addition to GSTIN, address, logo, bank details, and header/footer text.
 
-The app assigns the next invoice number when you finalize. A bill date may be today, a future date, or the same date as the latest finalized bill; it cannot be earlier than the latest finalized bill. Finalization saves a PDF copy and opens a bill summary with print and PDF actions.
+Each profile sets its invoice number format and starting number. You can optionally enable an annual billing cycle and select its reset day and month. When enabled, numbering restarts at the beginning of each cycle; otherwise it continues from the latest bill. Finalization saves a PDF copy and opens a bill summary with print and PDF actions.
 
 ## Local data
 
