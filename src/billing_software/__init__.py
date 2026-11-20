@@ -56,6 +56,8 @@ def init_db():
                     [(item["code"], item["description"], item["usage"]) for item in catalog["entries"]],
                 )
                 con.execute("INSERT INTO hsn_catalog_imports(catalog) VALUES('india-gst-hsn-starter-2026-11')")
+        # Add the commonly used battery heading without replacing a user's local edit.
+        con.execute("INSERT OR IGNORE INTO hsn_master(code,description,usage) VALUES(?,?,?)", ("8506", "Primary cells and primary batteries", "Non-rechargeable primary cells and batteries; examples include alkaline, zinc-carbon and lithium primary cells."))
         setting_columns = {row[1] for row in con.execute("PRAGMA table_info(settings)")}
         if "active_profile_id" not in setting_columns:
             con.execute("ALTER TABLE settings ADD COLUMN active_profile_id INTEGER")
@@ -115,8 +117,8 @@ def totals_for(items, tax_type="intra", roundoff=0):
         name = str(item.get("description", "")).strip()
         qty, rate, gst = float(item.get("quantity", 0)), money(item.get("rate")), float(item.get("gst", 0))
         hsn, unit = str(item.get("hsn", "")).strip(), str(item.get("unit", "")).strip()
-        if not name or qty <= 0 or rate < 0 or gst < 0 or gst > 100:
-            raise ValueError("Enter a description, a quantity above zero, and valid rate and GST values for every item.")
+        if not name or qty <= 0 or rate < 0 or gst not in (0, 5, 18):
+            raise ValueError("Enter a description, quantity above zero, valid rate, and GST of 0%, 5%, or 18% for every item.")
         line_base = money(qty * rate)
         line_tax = money(line_base * gst / 100)
         line_cgst = money(line_tax / 2) if tax_type == "intra" else 0
@@ -167,11 +169,41 @@ def cancellation_deadline(invoice_date):
     return date(next_year, next_month, 1) - timedelta(days=1)
 
 
+def next_bill_sequence(con, profile_id, company):
+    latest = con.execute("SELECT number FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (profile_id,)).fetchone()
+    if latest:
+        match = re.search(r"(\d+)$", latest["number"])
+        if match:
+            return int(match.group(1)) + 1
+    count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=?", (profile_id,)).fetchone()[0]
+    return int(company.get("starting_bill_number", 1)) + count
+
+
+def format_bill_number(company, bill_year, sequence):
+    mode = company.get("invoice_format", "inv_year")
+    if mode == "number":
+        return str(sequence)
+    if mode == "padded3":
+        return str(sequence).zfill(3)
+    return f"INV-{bill_year}-{sequence:03d}"
+
+
 def next_bill_number(con, profile_id, company, bill_year):
-    sequence = int(company.get("starting_bill_number", 1)) + con.execute("SELECT count(*) FROM invoices WHERE profile_id=?", (profile_id,)).fetchone()[0]
-    while con.execute("SELECT 1 FROM invoices WHERE number=?", (f"INV-{bill_year}-{sequence:04d}",)).fetchone():
+    sequence = next_bill_sequence(con, profile_id, company)
+    number = format_bill_number(company, bill_year, sequence)
+    while con.execute("SELECT 1 FROM invoices WHERE number=?", (number,)).fetchone():
         sequence += 1
-    return f"INV-{bill_year}-{sequence:04d}"
+        number = format_bill_number(company, bill_year, sequence)
+    return number
+
+
+def invoice_address(details):
+    lines = [str(details.get("address", "")).strip()]
+    if details.get("district"):
+        lines.append("District: " + str(details["district"]).strip())
+    if details.get("pincode"):
+        lines.append("PIN: " + str(details["pincode"]).strip())
+    return "\n".join(line for line in lines if line)
 
 
 def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
@@ -252,12 +284,12 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         bank = company["bank"]
         company_lines.append("<br/><b>Bank details</b>: " + " · ".join(safe(bank.get(k)) for k in ("name", "account", "ifsc", "branch") if bank.get(k)))
     customer = invoice["customer"]
-    bill_to = ["<b>Bill to</b>", f"<b>{safe(customer['name'])}</b>", safe(customer.get("gstin") or "-Nil-"), safe(customer.get("address")).replace("\n", "<br/>")]
+    bill_to = ["<b>Bill to</b>", f"<b>{safe(customer['name'])}</b>", safe(customer.get("gstin") or "-Nil-"), safe(invoice_address(customer)).replace("\n", "<br/>")]
     if customer.get("phone"):
         bill_to.append("Contact: " + safe(customer["phone"]))
     ship_to = invoice.get("ship_to", {})
     if ship_to.get("name") or ship_to.get("address"):
-        bill_to += ["<br/><b>Ship / work location</b>", f"<b>{safe(ship_to.get('name'))}</b>" if ship_to.get("name") else "", safe(ship_to.get("gstin") or "-Nil-"), safe(ship_to.get("address")).replace("\n", "<br/>"), ("Contact: " + safe(ship_to.get("phone"))) if ship_to.get("phone") else ""]
+        bill_to += ["<br/><b>Ship / work location</b>", f"<b>{safe(ship_to.get('name'))}</b>" if ship_to.get("name") else "", safe(ship_to.get("gstin") or "-Nil-"), safe(invoice_address(ship_to)).replace("\n", "<br/>"), ("Contact: " + safe(ship_to.get("phone"))) if ship_to.get("phone") else ""]
     if company_lines:
         parties = Table([[Paragraph("<br/>".join(company_lines), styles["BodyText"]), Paragraph("<br/>".join(x for x in bill_to if x), styles["BodyText"])]], colWidths=[82*mm, 88*mm])
     else:
@@ -279,7 +311,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     tax_rows.append(["Total", f"INR {totals['taxable']:,.2f}", f"INR {totals['cgst']:,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {totals['sgst']:,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {totals['igst']:,.2f}" if invoice["tax_type"] == "inter" else "-"])
     tax_table = Table(tax_rows, colWidths=[22*mm, 42*mm, 36*mm, 36*mm, 36*mm])
     tax_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),("FONTSIZE",(0,1),(-1,-1),10),("LINEBELOW",(0,0),(-1,-1),.4,colors.HexColor("#777777")),("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]))
-    story += [Paragraph(f"Place of supply: {safe(invoice.get('place_of_supply'))} · {'Intra-state (CGST + SGST)' if invoice['tax_type'] == 'intra' else 'Inter-state (IGST)'} · Reverse charge: {safe(invoice.get('reverse_charge') or 'No')}", styles["Small"]), Spacer(1, 2*mm), tax_table]
+    story += [Paragraph(f"Tax treatment: {'Intra-state (CGST + SGST)' if invoice['tax_type'] == 'intra' else 'Inter-state (IGST)'} · Reverse charge: {safe(invoice.get('reverse_charge') or 'No')}", styles["Small"]), Spacer(1, 2*mm), tax_table]
     summary_rows = [["Taxable value", f"INR {totals['taxable']:,.2f}"], ["GST total", f"INR {totals['tax']:,.2f}"], ["Round off", f"INR {totals['roundoff']:,.2f}"], ["Grand total", f"INR {totals['total']:,.2f}"]]
     summary = Table(summary_rows, colWidths=[38*mm, 38*mm], hAlign="RIGHT")
     summary.setStyle(TableStyle([("TEXTCOLOR",(0,0),(-1,-1),colors.black),("ALIGN",(0,0),(-1,-1),"RIGHT"),("FONTNAME",(0,0),(-1,-1),"Helvetica"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("LINEABOVE",(0,-1),(-1,-1),.8,colors.black),("FONTSIZE",(0,0),(-1,-2),12),("FONTSIZE",(0,-1),(-1,-1),14),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]))
@@ -350,6 +382,10 @@ def hsn_suggest():
     pattern = f"%{query}%"
     with db() as con:
         rows = con.execute("SELECT code,description,usage FROM hsn_master WHERE code LIKE ? OR lower(description) LIKE ? OR lower(usage) LIKE ? ORDER BY CASE WHEN code=? THEN 0 WHEN code LIKE ? THEN 1 ELSE 2 END, code LIMIT 12", (pattern, pattern, pattern, query, f"{query}%")).fetchall()
+        if "batter" in query:
+            battery_rows = con.execute("SELECT code,description,usage FROM hsn_master WHERE code IN ('8506','8507') ORDER BY code").fetchall()
+            seen = {row["code"] for row in rows}
+            rows = list(rows) + [row for row in battery_rows if row["code"] not in seen]
     return jsonify([dict(row) for row in rows])
 
 
@@ -371,6 +407,9 @@ def setup():
         cfg = {"company": company, "output_dir": profile["output_dir"], "profile_id": profile["id"]}
     if request.method == "POST":
         company = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "phone", "email", "header", "footer", "terms")}
+        company["invoice_format"] = request.form.get("invoice_format", "inv_year").strip()
+        if company["invoice_format"] not in ("number", "padded3", "inv_year"):
+            return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Choose a valid invoice number format.")
         company["gstin"] = company["gstin"].upper()
         company["bank"] = {k: request.form.get("bank_" + k, "").strip() for k in ("name", "account", "ifsc", "branch")}
         try:
@@ -415,38 +454,49 @@ def new_invoice():
         return redirect(url_for("home"))
     with db() as con:
         preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
+        preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
         last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
         cancellations = con.execute("SELECT number,invoice_date,customer FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
     available_cancellations = [dict(row) | {"customer": json.loads(row["customer"])} for row in cancellations if date.today() <= cancellation_deadline(row["invoice_date"])]
-    return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, last_date=last[0] if last else "", error=None, cancellable_count=len(available_cancellations))
+    return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=None, cancellable_count=len(available_cancellations))
 
 
 @app.post("/finalize")
 def finalize():
     cfg = settings()
     try:
-        customer = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "phone")}
+        customer = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "district", "pincode", "phone")}
         customer["gstin"] = customer["gstin"].upper()
-        ship_to = {k: request.form.get("ship_" + k, "").strip() for k in ("name", "gstin", "address", "phone")}
+        ship_to = {k: request.form.get("ship_" + k, "").strip() for k in ("name", "gstin", "address", "district", "pincode", "phone")}
         ship_to["gstin"] = ship_to["gstin"].upper()
-        place_of_supply = request.form.get("place_of_supply", "").strip()
         tax_type = request.form.get("tax_type", "intra")
         if tax_type not in ("intra", "inter"):
             raise ValueError("Choose intra-state or inter-state tax treatment.")
         reverse_charge = request.form.get("reverse_charge", "No").strip()
         warranty = request.form.get("warranty", "").strip()
+        if warranty not in ("1 Year", "6 Months", "3 Months", "-Nil-"):
+            raise ValueError("Choose one of the listed warranty options.")
         terms = request.form.get("terms", "").strip() or cfg["company"].get("terms", "")
         invoice_date = request.form.get("invoice_date", "")
+        number = request.form.get("invoice_number", "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}", number):
+            raise ValueError("Enter a bill number using letters, numbers, dots, underscores, or hyphens (up to 40 characters).")
         if not customer["name"] or not customer["address"]:
             raise ValueError("Customer name and address are required.")
         date.fromisoformat(invoice_date)
         items, totals = totals_for(json.loads(request.form.get("items", "[]")), tax_type, request.form.get("roundoff", 0))
-        customer.update({"ship_to": ship_to, "place_of_supply": place_of_supply, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms})
+        if request.form.get("same_shipping_address") == "on":
+            ship_to.update({"name": customer["name"], "phone": customer["phone"], "address": customer["address"], "district": customer["district"], "pincode": customer["pincode"]})
+        for pin in (customer["pincode"], ship_to["pincode"]):
+            if pin and not re.fullmatch(r"\d{6}", pin):
+                raise ValueError("Enter a six-digit pincode, or leave the field blank.")
+        customer.update({"ship_to": ship_to, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms})
         with db() as con:
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
             if last and invoice_date < last[0]:
                 raise ValueError(f"Bill date cannot be earlier than the last finalized bill ({last[0]}).")
-            number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.fromisoformat(invoice_date).year)
+            if con.execute("SELECT 1 FROM invoices WHERE number=?", (number,)).fetchone():
+                raise ValueError("That bill number has already been used. Enter a different bill number.")
             output_dir = Path(cfg["output_dir"] or APP_HOME / "Bills")
             month_dir = output_dir / date.fromisoformat(invoice_date).strftime("%B %Y")
             month_dir.mkdir(parents=True, exist_ok=True)
@@ -454,21 +504,23 @@ def finalize():
             address_label = "_".join(address_words) or "Customer"
             safe_stem = re.sub(r"[^A-Za-z0-9_-]", "", f"{address_label}_{number}")
             pdf_path = month_dir / f"{safe_stem}.pdf"
-            record = {"number": number, "date": invoice_date, "customer": customer, "ship_to": ship_to, "place_of_supply": place_of_supply, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms, "items": items, "totals": totals}
+            record = {"number": number, "date": invoice_date, "customer": customer, "ship_to": ship_to, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms, "items": items, "totals": totals}
             make_pdf(pdf_path, record, cfg["company"], cfg["company"].get("logo"))
             con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path,profile_id) VALUES(?,?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path), cfg["profile_id"]))
         return redirect(url_for("bill", invoice_id=number))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         with db() as con:
             preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
+            preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
-        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, last_date=last[0] if last else "", error=str(exc), cancellable_count=0), 400
+        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=str(exc), cancellable_count=0), 400
     except Exception as exc:
         app.logger.exception("Bill finalization failed for profile %s", cfg.get("profile_id"))
         with db() as con:
             preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
+            preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
-        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, last_date=last[0] if last else "", error=f"The bill could not be saved: {exc}", cancellable_count=0), 500
+        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=f"The bill could not be saved: {exc}", cancellable_count=0), 500
 
 
 @app.get("/bill/<invoice_id>")
