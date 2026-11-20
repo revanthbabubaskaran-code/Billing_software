@@ -219,12 +219,13 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     identity_lines = [safe(company.get("address")).replace("\n", "<br/>")]
     identity = Table([[Paragraph(safe(company_name), styles["CompanyTitle"])], [Paragraph("<br/>".join(identity_lines), styles["CompanyDetails"])]], colWidths=[identity_width], hAlign="CENTER")
     identity.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),0)]))
-    contact = Table([[
-        Paragraph("<b>Phone</b><br/>" + safe(company.get("phone")), styles["CompanyContact"]),
-        Paragraph("<b>Email</b><br/>" + safe(company.get("email")), styles["CompanyContact"]),
-        Paragraph("<b>GSTIN</b><br/>" + safe(company.get("gstin")), styles["CompanyContact"]),
-    ]], colWidths=[content_width/3]*3)
-    contact.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.6,colors.HexColor("#AAB7C4")),("INNERGRID",(0,0),(-1,-1),.4,colors.HexColor("#DCE3EC")),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
+    contact_line = " &nbsp; | &nbsp; ".join((
+        "<b>Cell No.</b> " + safe(company.get("phone")),
+        "<b>Email Id:</b> " + safe(company.get("email")),
+        "<b>GSTIN:</b> " + safe(company.get("gstin")),
+    ))
+    contact = Table([[Paragraph(contact_line, styles["CompanyContact"])]], colWidths=[content_width])
+    contact.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.6,colors.HexColor("#AAB7C4")),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
     story += [identity, Spacer(1, 2*mm), contact, Spacer(1, 5*mm)]
     company_lines = []
     if company.get("bank"):
