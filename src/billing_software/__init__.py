@@ -305,14 +305,16 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     styles.add(ParagraphStyle(name="InvoiceAddress", parent=styles["BodyText"], fontSize=9.5, leading=12, alignment=1, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceMeta", parent=styles["BodyText"], fontSize=9.5, leading=12, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceMetaRight", parent=styles["InvoiceMeta"], alignment=2))
-    styles.add(ParagraphStyle(name="InvoiceContact", parent=styles["BodyText"], fontSize=8.5, leading=10, alignment=1, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceContact", parent=styles["BodyText"], fontSize=8.5, leading=10, alignment=0, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceContactCenter", parent=styles["InvoiceContact"], alignment=1))
+    styles.add(ParagraphStyle(name="InvoiceContactRight", parent=styles["InvoiceContact"], alignment=2))
     styles.add(ParagraphStyle(name="InvoicePartyName", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceGrand", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=14, leading=17, alignment=2, textColor=colors.black))
     styles.add(ParagraphStyle(name="InvoiceColumnHeading", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5, leading=11, alignment=1, textColor=colors.black))
     story = []
     safe = lambda value: escape(str(value or ""))
     content_width = A4[0] - 34*mm
-    top_line = Table([[Paragraph("GSTIN: " + safe(company.get("gstin")), styles["InvoiceSmall"]), Paragraph("Original Copy", styles["InvoiceMetaRight"])]], colWidths=[content_width/2, content_width/2])
+    top_line = Table([["", Paragraph("Original Copy", styles["InvoiceMetaRight"])]], colWidths=[content_width/2, content_width/2])
     top_line.setStyle(TableStyle([("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
     story.append(top_line)
     company_name_text = str(company.get("name") or "Company")
@@ -336,9 +338,10 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     else:
         header = company_info
     story += [header, Spacer(1, 2*mm)]
-    contact_line = "  |  ".join(("<b>Contact No:</b> " + safe(company.get("phone")), "<b>Email:</b> " + safe(company.get("email")), "<b>GSTIN:</b> " + safe(company.get("gstin"))))
-    contact = Table([[Paragraph(contact_line, styles["InvoiceContact"])]], colWidths=[content_width])
-    contact.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.6,colors.black),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
+    contact_cells = [[Paragraph("<b>Contact No:</b> " + safe(company.get("phone")), styles["InvoiceContact"]), Paragraph("<b>Email:</b> " + safe(company.get("email")), styles["InvoiceContactCenter"]), Paragraph("<b>GSTIN:</b> " + safe(company.get("gstin")), styles["InvoiceContactRight"])]]
+    contact_widths = [content_width*.29, content_width*.42, content_width*.29]
+    contact = Table(contact_cells, colWidths=contact_widths)
+    contact.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.6,colors.black),("LINEBEFORE",(1,0),(1,0),.5,colors.black),("LINEBEFORE",(2,0),(2,0),.5,colors.black),("ALIGN",(0,0),(0,0),"LEFT"),("ALIGN",(1,0),(1,0),"CENTER"),("ALIGN",(2,0),(2,0),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
     story += [contact, Spacer(1, 2*mm)]
     if company.get("header"):
         story += [Paragraph(safe(company["header"]), styles["InvoiceSmall"]), Spacer(1, 1*mm)]
