@@ -404,7 +404,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     tax_style = [("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),("LINEBELOW",(0,0),(-1,0),.6,colors.black),("LINEABOVE",(0,-1),(-1,-1),.6,colors.black),("ALIGN",(0,0),(-1,-1),"CENTER"),("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]
     tax_table.setStyle(TableStyle(tax_style))
     grand = Table([[Paragraph("Grand total:", styles["InvoiceGrand"]), Paragraph(f"Rs. {totals['total']:,.2f}", styles["InvoiceGrand"])]], colWidths=[content_width-54*mm,54*mm], hAlign="RIGHT")
-    grand.setStyle(TableStyle([("LINEABOVE",(0,0),(-1,0),.7,colors.black),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+    grand.setStyle(TableStyle([("LINEABOVE",(0,0),(-1,0),.6,colors.black),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
     words = Paragraph(safe(amount_in_words(totals["total"])), styles["InvoiceAmountWords"])
     story += [tax_table, grand, Table([[words]], colWidths=[content_width], hAlign="RIGHT", style=TableStyle([("ALIGN",(0,0),(-1,-1),"RIGHT"), ("TOPPADDING",(0,0),(-1,-1),1), ("BOTTOMPADDING",(0,0),(-1,-1),2)]))]
     bank = company.get("bank") or {}
