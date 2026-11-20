@@ -199,3 +199,5 @@ tbody td{font-size:14px;font-variant-numeric:tabular-nums}
 [data-theme="dark"] .text-link,[data-theme="dark"] .invoice-link,[data-theme="dark"] .metric-location a,[data-theme="dark"] .profile-edit{color:#88c7ef}
 [data-theme="dark"] .row-arrow{color:#b2c0cc}
 [data-theme="dark"] .theme-controls button:focus-visible{outline:2px solid #8bc8ed;outline-offset:2px}
+.paper-company-identity{text-align:center;margin:19px auto 0;padding:0 12px}.paper-company-identity h2{font:700 21px/1.2 Manrope,sans-serif;letter-spacing:-.25px;margin:0 auto 5px;width:max-content;max-width:100%;color:#172536}.paper-company-identity p{font:400 11px/1.5 "DM Sans",sans-serif;color:#526174;margin:0 auto;width:max-content;max-width:100%;white-space:pre-line}.paper-company-identity strong{font-size:10px}.paper-parties section:first-child:only-child{min-height:48px}@media print{.paper-company-identity{margin-top:12px}.paper-company-identity h2{font-size:18pt}.paper-company-identity p{font-size:9pt}}
+.paper-parties:has(section:only-child){grid-template-columns:1fr}

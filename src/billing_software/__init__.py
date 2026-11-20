@@ -14,6 +14,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from werkzeug.utils import secure_filename
 from waitress import serve
@@ -163,9 +164,21 @@ def make_pdf(path, invoice, company, logo_path=None):
     head = Table([heading], colWidths=[35*mm, 75*mm, 55*mm] if len(heading) == 3 else [95*mm, 70*mm])
     head.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("ALIGN", (-1,0), (-1,-1), "RIGHT"), ("BOTTOMPADDING",(0,0),(-1,-1),8)]))
     story.append(head)
-    company_lines = [safe(company.get("gstin")), f"<b>{safe(company.get('name'))}</b>", safe(company.get("address")).replace("\n", "<br/>")]
-    if company.get("phone") or company.get("email"):
-        company_lines.append(" · ".join(safe(company.get(k)) for k in ("phone", "email") if company.get(k)))
+    company_name = str(company.get("name") or "Company")
+    content_width = A4[0] - 34*mm
+    try:
+        identity_width = min(content_width, max(55*mm, stringWidth(company_name, "Helvetica-Bold", 18) + 6*mm))
+    except Exception:
+        identity_width = content_width
+    styles.add(ParagraphStyle(name="CompanyTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=1, textColor=colors.HexColor("#172536"), spaceAfter=2*mm))
+    styles.add(ParagraphStyle(name="CompanyDetails", parent=styles["Small"], fontSize=9, leading=12, alignment=1))
+    identity_lines = [safe(company.get("address")).replace("\n", "<br/>")]
+    identity_lines += [" · ".join(safe(company.get(k)) for k in ("phone", "email") if company.get(k))] if company.get("phone") or company.get("email") else []
+    identity_lines += ["GSTIN: " + safe(company.get("gstin"))] if company.get("gstin") else []
+    identity = Table([[Paragraph(safe(company_name), styles["CompanyTitle"])], [Paragraph("<br/>".join(identity_lines), styles["CompanyDetails"])]], colWidths=[identity_width], hAlign="CENTER")
+    identity.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),0)]))
+    story += [identity, Spacer(1, 5*mm)]
+    company_lines = []
     if company.get("bank"):
         bank = company["bank"]
         company_lines.append("<br/><b>Bank details</b>: " + " · ".join(safe(bank.get(k)) for k in ("name", "account", "ifsc", "branch") if bank.get(k)))
@@ -176,7 +189,10 @@ def make_pdf(path, invoice, company, logo_path=None):
     ship_to = invoice.get("ship_to", {})
     if ship_to.get("name") or ship_to.get("address"):
         bill_to += ["<br/><b>Ship / work location</b>", f"<b>{safe(ship_to.get('name'))}</b>" if ship_to.get("name") else "", safe(ship_to.get("gstin")), safe(ship_to.get("address")).replace("\n", "<br/>"), ("Contact: " + safe(ship_to.get("phone"))) if ship_to.get("phone") else ""]
-    parties = Table([[Paragraph("<br/>".join(x for x in company_lines if x), styles["BodyText"]), Paragraph("<br/>".join(x for x in bill_to if x), styles["BodyText"])]], colWidths=[82*mm, 88*mm])
+    if company_lines:
+        parties = Table([[Paragraph("<br/>".join(company_lines), styles["BodyText"]), Paragraph("<br/>".join(x for x in bill_to if x), styles["BodyText"])]], colWidths=[82*mm, 88*mm])
+    else:
+        parties = Table([[Paragraph("<br/>".join(x for x in bill_to if x), styles["BodyText"])]], colWidths=[170*mm])
     parties.setStyle(TableStyle([("BACKGROUND",(0,0),(0,0),colors.HexColor("#F2F5F9")),("BACKGROUND",(1,0),(1,0),colors.HexColor("#F2F5F9")),("BOX",(0,0),(-1,-1),.5,colors.HexColor("#DCE3EC")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),9),("RIGHTPADDING",(0,0),(-1,-1),9),("TOPPADDING",(0,0),(-1,-1),9),("BOTTOMPADDING",(0,0),(-1,-1),9)]))
     story += [parties, Spacer(1, 7*mm)]
     rows = [["Description", "HSN/SAC", "Qty", "Unit", "Rate (INR)", "Amount (INR)"]]
