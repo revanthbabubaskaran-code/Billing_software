@@ -214,5 +214,22 @@ tbody td{font-size:14px;font-variant-numeric:tabular-nums}
  .paper .paper-watermark{background:transparent!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
  .paper .paper-cancelled-stamp{color:#000!important;background:transparent!important;border-color:#000!important}
 }
+/* Higher contrast for the light workspace and the new explicit theme selector. */
+:root[data-theme="light"]{--ink:#172536;--muted:#4f5d6b;--line:#d5dde5;--blue:#174f7c;--blue-dark:#123f65}
+[data-theme="light"] .workspace-label,[data-theme="light"] .metric-label,[data-theme="light"] .eyebrow,[data-theme="light"] .sidebar-note,[data-theme="light"] .brand small,[data-theme="light"] .workspace small,[data-theme="light"] .metric-card small,[data-theme="light"] .step,[data-theme="light"] .hint,[data-theme="light"] .optional,[data-theme="light"] .field em,[data-theme="light"] .items-head,[data-theme="light"] thead th,[data-theme="light"] .text-controls>span,[data-theme="light"] .theme-controls>label{color:#4b5968}
+[data-theme="light"] .nav-link,[data-theme="light"] .field,[data-theme="light"] .same-address,[data-theme="light"] tbody td,[data-theme="light"] .roundoff-field,[data-theme="light"] .totals div{color:#344354}
+[data-theme="light"] .button-quiet{color:#26394b;border-color:#bdc9d5}
+[data-theme="light"] .field input,[data-theme="light"] .field textarea,[data-theme="light"] .field select,[data-theme="light"] .item-row input,[data-theme="light"] .item-row select{color:#172536;border-color:#aebbc8}
+[data-theme="light"] .field input::placeholder,[data-theme="light"] .field textarea::placeholder,[data-theme="light"] .item-row input::placeholder{color:#586675;opacity:1}
+[data-theme="light"] .profile-heading p,[data-theme="light"] .profile-gstin,[data-theme="light"] .profile-local-note,[data-theme="light"] .profile-empty p,[data-theme="light"] .profile-brand small{color:#4f5d6b}
+[data-theme="light"] .number-preview{color:#174f7c;border-color:#c2ced9}
+[data-theme="light"] .theme-controls select{background:#fff;color:#26394b;border:1px solid #aebbc8}
+.theme-controls>label{display:block;color:#4b5968;font-size:9px;font-weight:700;letter-spacing:1.05px;margin-bottom:8px}
+.theme-controls select{display:block;width:100%;border:1px solid #bdc9d5;border-radius:5px;background:#fff;color:#26394b;padding:8px 10px;font:600 12px "Segoe UI","Nirmala UI","Noto Sans",sans-serif;cursor:pointer}
+.theme-controls select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+[data-theme="dark"] .theme-controls>label{color:#b9c5d0}
+[data-theme="dark"] .theme-controls select{background:#202d39;border-color:#3a4b5b;color:#e3ebf2}
+.profile-select-screen .theme-controls select{background:#fff;color:#26394b}
+[data-theme="dark"] .profile-select-screen .theme-controls select{background:#18232e;color:#d0dbe5;border-color:#3a4b5b}
 .same-address{display:flex;align-items:center;gap:9px;margin:-5px 0 17px;font-size:11px;font-weight:600;color:#46596d}.same-address input{width:16px;height:16px;accent-color:var(--blue)}.hsn-note{display:block;margin:8px 0 0}.hsn-master-form,.hsn-master-list{max-width:1020px;padding:22px 23px;margin-bottom:18px}.hsn-master-list{padding-bottom:0}.hsn-master-list td{vertical-align:top}.hsn-master-list td strong{color:var(--blue);font:700 13px Manrope}.hsn-edit{border:0;background:transparent;padding:0;cursor:pointer}.hsn-disclaimer{max-width:1020px;color:var(--muted);font-size:10px;line-height:1.5}.item-row datalist{display:none}[data-theme="dark"] .same-address{color:#d3dde6}[data-theme="dark"] .hsn-master-list td{color:#bcc9d4}
 
