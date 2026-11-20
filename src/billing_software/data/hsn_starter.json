@@ -1,12 +1,12 @@
 {
-  "title": "India GST HSN starter headings",
+  "title": "India GST HSN and SAC starter headings",
   "edition": "2026-11",
   "sources": [
     "https://services.gst.gov.in/services/searchhsnsac",
     "https://tutorial.gst.gov.in/downloads/news/advisory_on_hsn_validation_08_01_25.pdf",
     "https://www.cbic.gov.in/entities/cbic-content-mst/Njk%3D"
   ],
-  "notes": "Four-digit goods heading starter list. Descriptions are concise heading-level summaries based on the Indian Customs Tariff / GSTN HSN directory. Common-use notes are plain-language examples for search only, not official classifications or tax advice. Confirm the exact HSN/SAC, description, rate and applicable reporting digits for each product or service using the GST Portal and current CBIC notifications before issuing a tax invoice.",
+  "notes": "Four-digit goods headings and common SAC headings. Descriptions are concise heading-level summaries based on the Indian Customs Tariff / GSTN HSN directory. Common-use notes are plain-language examples for search only, not official classifications or tax advice. Confirm the exact HSN/SAC, description, rate and applicable reporting digits for each product or service using the GST Portal and current CBIC notifications before issuing a tax invoice.",
   "entries": [
     {"code":"0401","description":"Milk and cream, not concentrated nor containing added sugar or other sweetening matter","usage":"Fresh milk and cream; verify fat content and processing."},
     {"code":"0701","description":"Potatoes, fresh or chilled","usage":"Fresh or chilled potatoes."},
@@ -55,13 +55,16 @@
     {"code":"8517","description":"Telephone sets and other apparatus for transmission or reception of voice, images or other data","usage":"Telephones, network and communication apparatus; check product features."},
     {"code":"8528","description":"Monitors and projectors, not incorporating television reception apparatus; television reception apparatus","usage":"Computer monitors, projectors and television receivers; check functionality."},
     {"code":"8536","description":"Electrical apparatus for switching or protecting electrical circuits or for making connections","usage":"Switches, relays, fuses, plugs, sockets and connectors within heading scope."},
+    {"code":"8534","description":"Printed circuits","usage":"Sample bill uses this for Mother Board; confirm whether the item is a printed circuit board or a complete assembly."},
+    {"code":"8541","description":"Semiconductor devices and photosensitive semiconductor devices","usage":"Sample bill uses this for Display; check whether the item is a display component or a complete display unit."},
     {"code":"8537","description":"Boards, panels, consoles, desks, cabinets and other bases for electric control or distribution","usage":"Electrical control or distribution panels equipped with qualifying apparatus."},
     {"code":"8544","description":"Insulated wire, cable and other insulated electric conductors","usage":"Insulated electrical conductors and cables; check connectors, voltage and construction."},
     {"code":"8708","description":"Parts and accessories of motor vehicles of headings 8701 to 8705","usage":"Motor-vehicle parts and accessories; confirm vehicle category and any specific heading."},
     {"code":"9018","description":"Instruments and appliances used in medical, surgical, dental or veterinary sciences","usage":"Medical and diagnostic instruments; check specific instrument and intended use."},
     {"code":"9031","description":"Measuring or checking instruments, appliances and machines, not specified elsewhere","usage":"Other measuring or checking instruments only where no more specific heading applies."},
     {"code":"9403","description":"Other furniture and parts thereof","usage":"Furniture not covered by a more specific furniture heading."},
-    {"code":"9405","description":"Lamps and lighting fittings, including searchlights and spotlights","usage":"Lamps and lighting fittings; check type, source and component status."}
+    {"code":"9405","description":"Lamps and lighting fittings, including searchlights and spotlights","usage":"Lamps and lighting fittings; check type, source and component status."},
+    {"code":"9987","description":"Maintenance, repair and installation services (except construction)","usage":"Sample bill examples: P/S service charges, E/W/S service charges, stamping and other expenses; verify the exact SAC for the service."}
   ]
 }
 
