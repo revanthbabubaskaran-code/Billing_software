@@ -362,8 +362,10 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         if details.get("phone"):
             lines.append(Paragraph("<b>Contact No:</b> " + safe(details["phone"]), styles["InvoiceSmall"]))
         return lines
-    parties = Table([[party_block("Billed To:", customer), party_block("Shipped / work location:", ship_to)]], colWidths=[content_width/2, content_width/2])
-    parties.setStyle(TableStyle([("LINEBEFORE",(1,0),(1,0),.55,colors.black),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+    party_gutter = 10*mm
+    party_width = (content_width-party_gutter)/2
+    parties = Table([[party_block("Billed To:", customer), "", party_block("Shipped / work location:", ship_to)]], colWidths=[party_width,party_gutter,party_width])
+    parties.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
     story += [parties, Spacer(1, 2*mm)]
     item_rows = [[Paragraph("S.No", styles["InvoiceColumnHeading"]), Paragraph("Description of goods /<br/>Service charges", styles["InvoiceColumnHeading"]), Paragraph("HSN / SAC<br/>Code", styles["InvoiceColumnHeading"]), Paragraph("Qty", styles["InvoiceColumnHeading"]), Paragraph("Unit", styles["InvoiceColumnHeading"]), Paragraph("Price", styles["InvoiceColumnHeading"]), Paragraph("Amount", styles["InvoiceColumnHeading"])] ]
     for index, item in enumerate(invoice["items"], 1):
