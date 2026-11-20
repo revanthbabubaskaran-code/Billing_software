@@ -393,16 +393,29 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     words = Paragraph("<b>" + safe(amount_in_words(totals["total"])) + "</b>", styles["InvoiceSmall"])
     story += [tax_table, grand, Table([[words]], colWidths=[content_width], hAlign="RIGHT", style=TableStyle([("ALIGN",(0,0),(-1,-1),"RIGHT"), ("TOPPADDING",(0,0),(-1,-1),1), ("BOTTOMPADDING",(0,0),(-1,-1),2)]))]
     bank = company.get("bank") or {}
-    bank_labels = {"name":"Bank name", "account":"Account no.", "ifsc":"IFSC code", "branch":"Branch"}
-    bank_lines = [f"<b>{bank_labels[key]}:</b> {safe(bank[key])}" for key in ("name", "account", "ifsc", "branch") if bank.get(key)]
     reserve_width = content_width/2
     left_details = []
-    if bank_lines:
-        left_details.append(Paragraph("<b>Bank Details</b><br/>" + "<br/>".join(bank_lines), styles["InvoiceSmall"]))
+    if any(bank.get(key) for key in ("name", "account", "ifsc", "branch")):
+        bank_rows = [
+            [Paragraph("<b>Bank name:</b> " + safe(bank.get("name") or "-Nil-"), styles["InvoiceSmall"]), Paragraph("<b>Account no.:</b> " + safe(bank.get("account") or "-Nil-"), styles["InvoiceSmall"])],
+            [Paragraph("<b>IFSC code:</b> " + safe(bank.get("ifsc") or "-Nil-"), styles["InvoiceSmall"]), Paragraph("<b>Branch:</b> " + safe(bank.get("branch") or "-Nil-"), styles["InvoiceSmall"])],
+        ]
+        bank_table = Table(bank_rows, colWidths=[reserve_width/2,reserve_width/2])
+        bank_table.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.45,colors.black),("INNERGRID",(0,0),(-1,-1),.35,colors.black),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+        left_details.extend([Paragraph("<b>Bank Details</b>", styles["InvoiceSmall"]), bank_table, Spacer(1,2*mm)])
     if invoice.get("terms"):
         left_details.append(Paragraph("<b>Terms &amp; Conditions</b><br/>" + safe(invoice.get("terms")).replace("\n", "<br/>"), styles["InvoiceSmall"]))
     signing_name = safe(company.get("name") or "")
-    signing_space = [Spacer(1, 18*mm), Paragraph("<b>For " + signing_name + "</b>", styles["InvoiceMetaRight"]), Spacer(1, 8*mm), Paragraph("Authorized Signatory", styles["InvoiceMetaRight"])]
+    signing_space = [Paragraph("<b>For " + signing_name + "</b>", styles["InvoiceMetaRight"]), Spacer(1, 11*mm)]
+    signature_path = company.get("signature", "")
+    if signature_path and Path(signature_path).is_file():
+        try:
+            signing_space += [Image(signature_path, width=38*mm, height=14*mm, kind="proportional"), Paragraph("Digitally signed", styles["InvoiceMetaRight"]), Spacer(1, 2*mm)]
+        except Exception:
+            signing_space.append(Paragraph("________________________", styles["InvoiceMetaRight"]))
+    else:
+        signing_space += [Paragraph("________________________", styles["InvoiceMetaRight"]), Spacer(1, 2*mm)]
+    signing_space.append(Paragraph("Authorized Signatory", styles["InvoiceMetaRight"]))
     detail_cells = [[left_details, signing_space]]
     details = Table(detail_cells, colWidths=[reserve_width,reserve_width], hAlign="LEFT")
     details.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
@@ -555,6 +568,16 @@ def setup():
             company["logo"] = str(logo_path)
         else:
             company["logo"] = cfg["company"].get("logo", "")
+        signature = request.files.get("signature")
+        if signature and signature.filename:
+            ext = Path(secure_filename(signature.filename)).suffix.lower()
+            if ext not in (".png", ".jpg", ".jpeg"):
+                return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Signature must be a PNG or JPG image.")
+            signature_path = UPLOADS / f"company-signature-{uuid4().hex}{ext}"
+            signature.save(signature_path)
+            company["signature"] = str(signature_path)
+        else:
+            company["signature"] = cfg["company"].get("signature", "")
         out = Path(request.form.get("output_dir", "").strip()).expanduser()
         try:
             out.mkdir(parents=True, exist_ok=True)
@@ -803,6 +826,18 @@ def profile_logo(profile_id):
     if not logo or not Path(logo).is_file():
         abort(404)
     return send_file(logo)
+
+
+@app.get("/profiles/<int:profile_id>/signature")
+def profile_signature(profile_id):
+    with db() as con:
+        row = con.execute("SELECT company FROM profiles WHERE id=?", (profile_id,)).fetchone()
+    if not row:
+        abort(404)
+    signature = json.loads(row[0]).get("signature", "")
+    if not signature or not Path(signature).is_file():
+        abort(404)
+    return send_file(signature)
 
 
 @app.get("/bill/<invoice_id>/company-logo")
