@@ -4,7 +4,7 @@ import json
 import os
 import re
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 from xml.sax.saxutils import escape
@@ -39,7 +39,7 @@ def init_db():
         con.executescript("""
         CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id=1), company TEXT NOT NULL DEFAULT '{}', output_dir TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, company TEXT NOT NULL, output_dir TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0);
         INSERT OR IGNORE INTO settings(id) VALUES(1);
         """)
         setting_columns = {row[1] for row in con.execute("PRAGMA table_info(settings)")}
@@ -48,6 +48,8 @@ def init_db():
         invoice_columns = {row[1] for row in con.execute("PRAGMA table_info(invoices)")}
         if "profile_id" not in invoice_columns:
             con.execute("ALTER TABLE invoices ADD COLUMN profile_id INTEGER")
+        if "cancelled" not in invoice_columns:
+            con.execute("ALTER TABLE invoices ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0")
         legacy = con.execute("SELECT company, output_dir, active_profile_id FROM settings WHERE id=1").fetchone()
         profile_count = con.execute("SELECT count(*) FROM profiles").fetchone()[0]
         if not profile_count and json.loads(legacy["company"]).get("name"):
@@ -145,7 +147,48 @@ def amount_in_words(value):
     return f"Rupees {words} only"
 
 
-def make_pdf(path, invoice, company, logo_path=None):
+def cancellation_deadline(invoice_date):
+    issued = date.fromisoformat(invoice_date)
+    next_year, next_month = (issued.year + (issued.month == 12), 1 if issued.month == 12 else issued.month + 1)
+    return date(next_year, next_month, 1) - timedelta(days=1)
+
+
+def next_bill_number(con, profile_id, company, bill_year):
+    sequence = int(company.get("starting_bill_number", 1)) + con.execute("SELECT count(*) FROM invoices WHERE profile_id=?", (profile_id,)).fetchone()[0]
+    while con.execute("SELECT 1 FROM invoices WHERE number=?", (f"INV-{bill_year}-{sequence:04d}",)).fetchone():
+        sequence += 1
+    return f"INV-{bill_year}-{sequence:04d}"
+
+
+def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
+    def draw_watermark(canvas, doc):
+        if not logo_path or not Path(logo_path).is_file():
+            return
+        try:
+            canvas.saveState()
+            canvas.setFillAlpha(.10)
+            mark_width = 95*mm
+            mark_height = 60*mm
+            canvas.drawImage(logo_path, (A4[0]-mark_width)/2, (A4[1]-mark_height)/2, width=mark_width, height=mark_height, preserveAspectRatio=True, anchor="c", mask="auto")
+            canvas.restoreState()
+        except Exception:
+            try:
+                canvas.restoreState()
+            except Exception:
+                pass
+
+    def draw_cancelled(canvas, doc):
+        if not cancelled:
+            return
+        canvas.saveState()
+        canvas.translate(A4[0]/2, A4[1]/2)
+        canvas.rotate(35)
+        canvas.setFillColor(colors.HexColor("#C62828"))
+        canvas.setFillAlpha(.30)
+        canvas.setFont("Helvetica-Bold", 50)
+        canvas.drawCentredString(0, 0, "CANCELLED")
+        canvas.restoreState()
+
     doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=17*mm, leftMargin=17*mm, topMargin=15*mm, bottomMargin=15*mm, title=f"Tax invoice {invoice['number']}")
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=9, leading=12, textColor=colors.HexColor("#526174")))
@@ -188,12 +231,12 @@ def make_pdf(path, invoice, company, logo_path=None):
         bank = company["bank"]
         company_lines.append("<br/><b>Bank details</b>: " + " · ".join(safe(bank.get(k)) for k in ("name", "account", "ifsc", "branch") if bank.get(k)))
     customer = invoice["customer"]
-    bill_to = ["<b>Bill to</b>", f"<b>{safe(customer['name'])}</b>", safe(customer.get("gstin")), safe(customer.get("address")).replace("\n", "<br/>")]
+    bill_to = ["<b>Bill to</b>", f"<b>{safe(customer['name'])}</b>", safe(customer.get("gstin") or "-Nil-"), safe(customer.get("address")).replace("\n", "<br/>")]
     if customer.get("phone"):
         bill_to.append("Contact: " + safe(customer["phone"]))
     ship_to = invoice.get("ship_to", {})
     if ship_to.get("name") or ship_to.get("address"):
-        bill_to += ["<br/><b>Ship / work location</b>", f"<b>{safe(ship_to.get('name'))}</b>" if ship_to.get("name") else "", safe(ship_to.get("gstin")), safe(ship_to.get("address")).replace("\n", "<br/>"), ("Contact: " + safe(ship_to.get("phone"))) if ship_to.get("phone") else ""]
+        bill_to += ["<br/><b>Ship / work location</b>", f"<b>{safe(ship_to.get('name'))}</b>" if ship_to.get("name") else "", safe(ship_to.get("gstin") or "-Nil-"), safe(ship_to.get("address")).replace("\n", "<br/>"), ("Contact: " + safe(ship_to.get("phone"))) if ship_to.get("phone") else ""]
     if company_lines:
         parties = Table([[Paragraph("<br/>".join(company_lines), styles["BodyText"]), Paragraph("<br/>".join(x for x in bill_to if x), styles["BodyText"])]], colWidths=[82*mm, 88*mm])
     else:
@@ -226,6 +269,8 @@ def make_pdf(path, invoice, company, logo_path=None):
         story += [Spacer(1, 2*mm), Paragraph("<b>Terms &amp; Conditions</b><br/>" + safe(invoice["terms"]).replace("\n", "<br/>"), styles["Small"])]
     if company.get("footer"):
         story += [Spacer(1, 4*mm), Paragraph(safe(company["footer"]), styles["Small"])]
+    doc.pageTemplates[0].onPage = draw_watermark
+    doc.pageTemplates[0].onPageEnd = draw_cancelled
     doc.build(story)
 
 
@@ -250,9 +295,9 @@ def dashboard():
     if not cfg["company"].get("name"):
         return redirect(url_for("home"))
     with db() as con:
-        invoices = con.execute("SELECT number, invoice_date, customer, totals FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 8", (cfg["profile_id"],)).fetchall()
-        count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=?", (cfg["profile_id"],)).fetchone()[0]
-        total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices WHERE profile_id=?", (cfg["profile_id"],)).fetchone()[0]
+        invoices = con.execute("SELECT number, invoice_date, customer, totals FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC LIMIT 8", (cfg["profile_id"],)).fetchall()
+        count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
+        total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
     return render_template("home.html", cfg=cfg, invoices=[{**dict(x), "customer": json.loads(x["customer"]), "totals": json.loads(x["totals"])} for x in invoices], count=count, total=total)
 
 
@@ -273,9 +318,15 @@ def setup():
         company["gstin"] = str(company.get("gstin", "")).strip().upper()
         cfg = {"company": company, "output_dir": profile["output_dir"], "profile_id": profile["id"]}
     if request.method == "POST":
-        company = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "phone", "email", "header", "footer")}
+        company = {k: request.form.get(k, "").strip() for k in ("name", "gstin", "address", "phone", "email", "header", "footer", "terms")}
         company["gstin"] = company["gstin"].upper()
         company["bank"] = {k: request.form.get("bank_" + k, "").strip() for k in ("name", "account", "ifsc", "branch")}
+        try:
+            company["starting_bill_number"] = int(cfg["company"].get("starting_bill_number", 1)) if profile_id else int(request.form.get("starting_bill_number", "1"))
+            if company["starting_bill_number"] < 1:
+                raise ValueError
+        except ValueError:
+            return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Starting bill number must be a positive whole number.")
         if not company["name"] or not company["gstin"] or not company["address"]:
             return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Company name, GSTIN, and address are required.")
         logo = request.files.get("logo")
@@ -311,9 +362,11 @@ def new_invoice():
     if not cfg["company"].get("name"):
         return redirect(url_for("home"))
     with db() as con:
+        preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
         last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
-        next_num = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM invoices").fetchone()[0]
-    return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), last_date=last[0] if last else "", preview=f"INV-{date.today().year}-{next_num:04d}", error=None)
+        cancellations = con.execute("SELECT number,invoice_date,customer FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
+    available_cancellations = [dict(row) | {"customer": json.loads(row["customer"])} for row in cancellations if date.today() <= cancellation_deadline(row["invoice_date"])]
+    return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, last_date=last[0] if last else "", error=None, cancellable_count=len(available_cancellations))
 
 
 @app.post("/finalize")
@@ -330,7 +383,7 @@ def finalize():
             raise ValueError("Choose intra-state or inter-state tax treatment.")
         reverse_charge = request.form.get("reverse_charge", "No").strip()
         warranty = request.form.get("warranty", "").strip()
-        terms = request.form.get("terms", "").strip()
+        terms = request.form.get("terms", "").strip() or cfg["company"].get("terms", "")
         invoice_date = request.form.get("invoice_date", "")
         if not customer["name"] or not customer["address"]:
             raise ValueError("Customer name and address are required.")
@@ -341,20 +394,23 @@ def finalize():
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
             if last and invoice_date < last[0]:
                 raise ValueError(f"Bill date cannot be earlier than the last finalized bill ({last[0]}).")
-            number = f"INV-{date.fromisoformat(invoice_date).year}-{con.execute('SELECT COALESCE(MAX(id),0)+1 FROM invoices').fetchone()[0]:04d}"
+            number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.fromisoformat(invoice_date).year)
             output_dir = Path(cfg["output_dir"] or APP_HOME / "Bills")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            safe_number = re.sub(r"[^A-Za-z0-9_-]", "", number)
-            pdf_path = output_dir / f"{safe_number}.pdf"
+            month_dir = output_dir / date.fromisoformat(invoice_date).strftime("%B %Y")
+            month_dir.mkdir(parents=True, exist_ok=True)
+            address_words = re.findall(r"[A-Za-z0-9]+", customer["address"])[:3]
+            address_label = "_".join(address_words) or "Customer"
+            safe_stem = re.sub(r"[^A-Za-z0-9_-]", "", f"{address_label}_{number}")
+            pdf_path = month_dir / f"{safe_stem}.pdf"
             record = {"number": number, "date": invoice_date, "customer": customer, "ship_to": ship_to, "place_of_supply": place_of_supply, "tax_type": tax_type, "reverse_charge": reverse_charge, "warranty": warranty, "terms": terms, "items": items, "totals": totals}
             make_pdf(pdf_path, record, cfg["company"], cfg["company"].get("logo"))
             con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path,profile_id) VALUES(?,?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path), cfg["profile_id"]))
         return redirect(url_for("bill", invoice_id=number))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         with db() as con:
+            preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
-            next_num = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM invoices").fetchone()[0]
-        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), last_date=last[0] if last else "", preview=f"INV-{date.today().year}-{next_num:04d}", error=str(exc)), 400
+        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, last_date=last[0] if last else "", error=str(exc), cancellable_count=0), 400
 
 
 @app.get("/bill/<invoice_id>")
@@ -374,7 +430,46 @@ def bill(invoice_id):
     totals.setdefault("igst", totals.get("tax", 0) if tax_type == "inter" else 0)
     company = json.loads(row["company_snapshot"])
     company["gstin"] = str(company.get("gstin", "")).strip().upper()
-    return render_template("bill.html", invoice={**dict(row), "customer": customer, "ship_to": customer.get("ship_to", {}), "place_of_supply": customer.get("place_of_supply", ""), "tax_type": tax_type, "reverse_charge": customer.get("reverse_charge", "No"), "warranty": customer.get("warranty", ""), "terms": customer.get("terms", ""), "items": json.loads(row["items"]), "totals": totals, "amount_words": amount_in_words(totals["total"]), "company": company}, cfg=settings())
+    can_cancel = not row["cancelled"] and date.today() <= cancellation_deadline(row["invoice_date"])
+    return render_template("bill.html", invoice={**dict(row), "customer": customer, "ship_to": customer.get("ship_to", {}), "place_of_supply": customer.get("place_of_supply", ""), "tax_type": tax_type, "reverse_charge": customer.get("reverse_charge", "No"), "warranty": customer.get("warranty", ""), "terms": customer.get("terms", ""), "items": json.loads(row["items"]), "totals": totals, "amount_words": amount_in_words(totals["total"]), "company": company, "can_cancel": can_cancel}, cfg=settings())
+
+
+@app.get("/cancellations")
+def cancellations():
+    cfg = settings()
+    with db() as con:
+        rows = con.execute("SELECT number,invoice_date,customer,pdf_path FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
+    bills = []
+    for row in rows:
+        deadline = cancellation_deadline(row["invoice_date"])
+        if date.today() <= deadline:
+            bills.append({**dict(row), "customer": json.loads(row["customer"]), "cancel_deadline": deadline.isoformat()})
+    return render_template("cancellations.html", cfg=cfg, bills=bills)
+
+
+@app.post("/bill/<invoice_id>/cancel")
+def cancel_bill(invoice_id):
+    cfg = settings()
+    with db() as con:
+        row = con.execute("SELECT * FROM invoices WHERE number=? AND profile_id=?", (invoice_id, cfg["profile_id"])).fetchone()
+        if not row:
+            abort(404)
+        if row["cancelled"]:
+            return redirect(url_for("bill", invoice_id=invoice_id))
+        if date.today() > cancellation_deadline(row["invoice_date"]):
+            abort(410, description="The cancellation period for this bill has ended.")
+        customer = json.loads(row["customer"])
+        totals = json.loads(row["totals"])
+        company = json.loads(row["company_snapshot"])
+        tax_type = customer.get("tax_type", "intra")
+        totals.setdefault("roundoff", 0)
+        totals.setdefault("cgst", round(totals.get("tax", 0) / 2, 2) if tax_type == "intra" else 0)
+        totals.setdefault("sgst", round(totals.get("tax", 0) - totals["cgst"], 2) if tax_type == "intra" else 0)
+        totals.setdefault("igst", totals.get("tax", 0) if tax_type == "inter" else 0)
+        invoice_record = {"number": row["number"], "date": row["invoice_date"], "customer": customer, "ship_to": customer.get("ship_to", {}), "place_of_supply": customer.get("place_of_supply", ""), "tax_type": tax_type, "reverse_charge": customer.get("reverse_charge", "No"), "warranty": customer.get("warranty", ""), "terms": customer.get("terms", ""), "items": json.loads(row["items"]), "totals": totals}
+        make_pdf(row["pdf_path"], invoice_record, company, company.get("logo"), cancelled=True)
+        con.execute("UPDATE invoices SET cancelled=1 WHERE id=?", (row["id"],))
+    return redirect(url_for("bill", invoice_id=invoice_id))
 
 
 @app.get("/bill/<invoice_id>/pdf")
@@ -433,3 +528,4 @@ def main():
     server.start()
     webview.create_window("Ledgerline · GST Billing", url, width=1360, height=900, min_size=(360, 600), resizable=True)
     webview.start(gui="edgechromium")
+
