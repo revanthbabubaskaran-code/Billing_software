@@ -316,30 +316,25 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     story = []
     safe = lambda value: escape(str(value or ""))
     content_width = A4[0] - 34*mm
-    top_line = Table([["", Paragraph("Original Copy", styles["InvoiceMetaRight"])]], colWidths=[content_width/2, content_width/2])
-    top_line.setStyle(TableStyle([("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
-    story.append(top_line)
     company_name_text = str(company.get("name") or "Company")
     company_name = safe(company_name_text)
     address_text = str(company.get("address") or "")
     address = safe(address_text).replace("\n", "<br/>")
-    has_logo = bool(logo_path and Path(logo_path).is_file())
-    company_info_width = content_width-64*mm if has_logo else content_width
+    company_info_width = content_width-64*mm
     address_line_width = max((stringWidth(line, "Helvetica", 9.5) for line in address_text.splitlines() if line.strip()), default=company_info_width)
     company_target_width = min(company_info_width-2*mm, address_line_width)
     company_font_size = min(40, max(10, company_target_width / max(1, stringWidth(company_name_text, "Helvetica-Bold", 1))))
     company_name_style = ParagraphStyle(name="InvoiceCompanyDynamic", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=company_font_size, leading=company_font_size*1.15, alignment=1, textColor=colors.black, spaceAfter=1*mm)
     company_info = Table([[Paragraph(company_name, company_name_style)], [Paragraph(address, styles["InvoiceAddress"])]] , colWidths=[company_info_width])
     company_info.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("LEFTPADDING",(0,0),(-1,-1),1),("RIGHTPADDING",(0,0),(-1,-1),1),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+    logo_cell = ""
     if logo_path and Path(logo_path).is_file():
         try:
-            logo = Image(logo_path, width=29*mm, height=23*mm, kind="proportional")
-            header = Table([[logo, company_info, ""]], colWidths=[32*mm, content_width-64*mm, 32*mm], hAlign="LEFT")
-            header.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("RIGHTPADDING",(0,0),(0,0),4),("LEFTPADDING",(1,0),(1,0),2),("RIGHTPADDING",(1,0),(1,0),2),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1)]))
+            logo_cell = Image(logo_path, width=29*mm, height=23*mm, kind="proportional")
         except Exception:
-            header = company_info
-    else:
-        header = company_info
+            logo_cell = ""
+    header = Table([[logo_cell, company_info, Paragraph("Original Copy", styles["InvoiceMetaRight"])]], colWidths=[32*mm, company_info_width, 32*mm], hAlign="LEFT")
+    header.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("RIGHTPADDING",(0,0),(0,0),4),("LEFTPADDING",(1,0),(1,0),2),("RIGHTPADDING",(1,0),(1,0),2),("LEFTPADDING",(2,0),(2,0),1),("RIGHTPADDING",(2,0),(2,0),0),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1)]))
     story += [header, Spacer(1, 2*mm)]
     contact_cells = [[Paragraph("<b>Contact No:</b> " + safe(company.get("phone")), styles["InvoiceContact"]), Paragraph("<b>Email:</b> " + safe(company.get("email")), styles["InvoiceContactCenter"]), Paragraph("<b>GSTIN:</b> " + safe(company.get("gstin")), styles["InvoiceContactRight"])]]
     contact_widths = [content_width*.29, content_width*.42, content_width*.29]
