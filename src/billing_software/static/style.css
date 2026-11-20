@@ -232,5 +232,6 @@ tbody td{font-size:14px;font-variant-numeric:tabular-nums}
 [data-theme="dark"] .theme-controls select{background:#202d39;border-color:#3a4b5b;color:#e3ebf2}
 .profile-select-screen .theme-controls select{background:#fff;color:#26394b}
 [data-theme="dark"] .profile-select-screen .theme-controls select{background:#18232e;color:#d0dbe5;border-color:#3a4b5b}
+#billing-cycle-date[hidden]{display:none!important}
 .same-address{display:flex;align-items:center;gap:9px;margin:-5px 0 17px;font-size:11px;font-weight:600;color:#46596d}.same-address input{width:16px;height:16px;accent-color:var(--blue)}.hsn-note{display:block;margin:8px 0 0}.hsn-master-form,.hsn-master-list{max-width:1020px;padding:22px 23px;margin-bottom:18px}.hsn-master-list{padding-bottom:0}.hsn-master-list td{vertical-align:top}.hsn-master-list td strong{color:var(--blue);font:700 13px Manrope}.hsn-edit{border:0;background:transparent;padding:0;cursor:pointer}.hsn-disclaimer{max-width:1020px;color:var(--muted);font-size:10px;line-height:1.5}.item-row datalist{display:none}[data-theme="dark"] .same-address{color:#d3dde6}[data-theme="dark"] .hsn-master-list td{color:#bcc9d4}
 
