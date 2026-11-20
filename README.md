@@ -14,6 +14,8 @@ The app opens in its own desktop window and listens only on this computer. It us
 
 The app uses Waitress to serve the local interface. GSTIN values are converted to uppercase when entered and saved. Use the **Appearance** button at the lower left to cycle between automatic OS appearance, dark, and light modes; the choice is remembered in the desktop app. The layout adapts for desktop, tablet, and narrow phone screens.
 
+The editable HSN master is seeded once from the bundled four-digit starter catalog at `src/billing_software/data/hsn_starter.json`. The catalog includes source links, official heading-level descriptions, and practical common-use search notes. Common-use notes are examples only; verify the applicable code and tax treatment against the GST Portal and current CBIC material. Changes made in the HSN master are stored locally and are not overwritten by later application starts.
+
 ## Create a bill
 
 Enter customer and optional ship-to details, place of supply, reverse-charge status, and invoice terms. Add line items with optional HSN/SAC codes and units, quantities, rates, and GST rates. Choose intra-state (CGST plus SGST) or inter-state (IGST) tax treatment. The app shows a tax-rate summary, editable round-off, grand total, and amount in words. The company profile can include phone and email, in addition to GSTIN, address, logo, bank details, and header/footer text.
@@ -27,3 +29,4 @@ By default, the database and uploaded logo are stored in `~/.billing-software` (
 Changing the PDF destination affects future bills. Existing PDF copies remain in their original folder. Back up both the application-data directory and the selected bill-copy folder.
 
 Bills print on A4 portrait paper. The display-size buttons in the sidebar increase or decrease the on-screen interface scale and remember the selected size in the browser.
+
