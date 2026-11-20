@@ -235,7 +235,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     identity_lines = [safe(company.get("address")).replace("\n", "<br/>")]
     identity = Table([[Paragraph(safe(company_name), styles["CompanyTitle"])], [Paragraph("<br/>".join(identity_lines), styles["CompanyDetails"])]], colWidths=[identity_width], hAlign="CENTER")
     identity.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),0)]))
-    contact_line = " &nbsp; | &nbsp; ".join((
+    contact_line = "  |  ".join((
         "<b>Cell No.</b> " + safe(company.get("phone")),
         "<b>Email Id:</b> " + safe(company.get("email")),
         "<b>GSTIN:</b> " + safe(company.get("gstin")),
@@ -459,6 +459,12 @@ def finalize():
             preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
             last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
         return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, last_date=last[0] if last else "", error=str(exc), cancellable_count=0), 400
+    except Exception as exc:
+        app.logger.exception("Bill finalization failed for profile %s", cfg.get("profile_id"))
+        with db() as con:
+            preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], date.today().year)
+            last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
+        return render_template("invoice.html", cfg=cfg, today=date.today().isoformat(), preview=preview_number, last_date=last[0] if last else "", error=f"The bill could not be saved: {exc}", cancellable_count=0), 500
 
 
 @app.get("/bill/<invoice_id>")
