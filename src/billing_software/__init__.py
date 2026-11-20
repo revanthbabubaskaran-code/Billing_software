@@ -407,15 +407,15 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     if invoice.get("terms"):
         left_details.append(Paragraph("<b>Terms &amp; Conditions</b><br/>" + safe(invoice.get("terms")).replace("\n", "<br/>"), styles["InvoiceSmall"]))
     signing_name = safe(company.get("name") or "")
-    signing_space = [Paragraph("<b>For " + signing_name + "</b>", styles["InvoiceMetaRight"]), Spacer(1, 11*mm)]
+    signing_space = [Paragraph("<b>For " + signing_name + "</b>", styles["InvoiceMetaRight"]), Spacer(1, 4*mm)]
     signature_path = company.get("signature", "")
     if signature_path and Path(signature_path).is_file():
         try:
-            signing_space += [Image(signature_path, width=38*mm, height=14*mm, kind="proportional"), Paragraph("Digitally signed", styles["InvoiceMetaRight"]), Spacer(1, 2*mm)]
+            signing_space += [Image(signature_path, width=32*mm, height=10*mm, kind="proportional"), Paragraph("Digitally signed", styles["InvoiceMetaRight"]), Spacer(1, 1*mm)]
         except Exception:
-            signing_space.append(Spacer(1, 16*mm))
+            signing_space.append(Spacer(1, 8*mm))
     else:
-        signing_space.append(Spacer(1, 16*mm))
+        signing_space.append(Spacer(1, 8*mm))
     signing_space.append(Paragraph("Authorized Signatory", styles["InvoiceMetaRight"]))
     detail_cells = [[left_details, signing_space]]
     details = Table(detail_cells, colWidths=[reserve_width,reserve_width], hAlign="LEFT")
