@@ -40,7 +40,7 @@ def init_db():
         con.executescript("""
         CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id=1), company TEXT NOT NULL DEFAULT '{}', output_dir TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, company TEXT NOT NULL, output_dir TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS hsn_master (code TEXT PRIMARY KEY, description TEXT NOT NULL, usage TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS hsn_catalog_imports (catalog TEXT PRIMARY KEY, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         INSERT OR IGNORE INTO settings(id) VALUES(1);
@@ -73,6 +73,8 @@ def init_db():
             con.execute("ALTER TABLE invoices ADD COLUMN profile_id INTEGER")
         if "cancelled" not in invoice_columns:
             con.execute("ALTER TABLE invoices ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0")
+        if "deleted" not in invoice_columns:
+            con.execute("ALTER TABLE invoices ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
         legacy = con.execute("SELECT company, output_dir, active_profile_id FROM settings WHERE id=1").fetchone()
         profile_count = con.execute("SELECT count(*) FROM profiles").fetchone()[0]
         if not profile_count and json.loads(legacy["company"]).get("name"):
@@ -90,8 +92,8 @@ def init_db():
                     break
         if unique_number_index:
             con.execute("ALTER TABLE invoices RENAME TO invoices_unique_number_old")
-            con.execute("CREATE TABLE invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0, profile_id INTEGER)")
-            con.execute("INSERT INTO invoices(id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,profile_id) SELECT id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,profile_id FROM invoices_unique_number_old")
+            con.execute("CREATE TABLE invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, profile_id INTEGER)")
+            con.execute("INSERT INTO invoices(id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,deleted,profile_id) SELECT id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,deleted,profile_id FROM invoices_unique_number_old")
             con.execute("DROP TABLE invoices_unique_number_old")
         con.execute("CREATE INDEX IF NOT EXISTS invoices_profile_cycle_lookup ON invoices(profile_id,invoice_date,id)")
 
@@ -296,87 +298,103 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         draw_watermark(canvas, doc)
         draw_cancelled(canvas, doc)
 
-    doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=17*mm, leftMargin=17*mm, topMargin=10*mm, bottomMargin=10*mm, title=f"Tax invoice {invoice['number']}")
+    doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=17*mm, leftMargin=17*mm, topMargin=9*mm, bottomMargin=9*mm, title=f"Tax invoice {invoice['number']}")
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=9, leading=12, textColor=colors.black))
-    styles.add(ParagraphStyle(name="Right", parent=styles["BodyText"], fontSize=10, alignment=2, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceSmall", parent=styles["BodyText"], fontSize=8, leading=9.5, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceBody", parent=styles["BodyText"], fontSize=8.5, leading=10.5, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceCompany", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=20, alignment=1, textColor=colors.black, spaceAfter=1*mm))
+    styles.add(ParagraphStyle(name="InvoiceAddress", parent=styles["BodyText"], fontSize=9, leading=11, alignment=1, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceMeta", parent=styles["BodyText"], fontSize=8.5, leading=11, textColor=colors.black))
+    styles.add(ParagraphStyle(name="InvoiceMetaRight", parent=styles["InvoiceMeta"], alignment=2))
+    styles.add(ParagraphStyle(name="InvoiceContact", parent=styles["BodyText"], fontSize=7.5, leading=9, alignment=1, textColor=colors.black))
     story = []
     safe = lambda value: escape(str(value or ""))
-    if company.get("header"):
-        story += [Paragraph(safe(company["header"]), styles["Small"]), Spacer(1, 3*mm)]
-    heading = [Paragraph("TAX INVOICE", styles["Title"]), Paragraph(f"<b>{invoice['number']}</b><br/>Date: {invoice['date']}", styles["Right"])]
+    content_width = A4[0] - 34*mm
+    top_line = Table([[Paragraph("GSTIN: " + safe(company.get("gstin")), styles["InvoiceSmall"]), Paragraph("Original Copy", styles["InvoiceMetaRight"])]], colWidths=[content_width/2, content_width/2])
+    top_line.setStyle(TableStyle([("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
+    story.append(top_line)
+    company_name = safe(company.get("name") or "Company")
+    address = safe(company.get("address")).replace("\n", "<br/>")
+    company_info = Table([[Paragraph(company_name, styles["InvoiceCompany"])], [Paragraph(address, styles["InvoiceAddress"])]] , colWidths=[content_width-32*mm])
+    company_info.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("LINEBELOW",(0,0),(-1,-1),.8,colors.black),("LEFTPADDING",(0,0),(-1,-1),1),("RIGHTPADDING",(0,0),(-1,-1),1),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
     if logo_path and Path(logo_path).is_file():
         try:
-            logo = Image(logo_path, width=28*mm, height=18*mm, kind="proportional")
-            heading.insert(0, logo)
+            logo = Image(logo_path, width=29*mm, height=23*mm, kind="proportional")
+            header = Table([[logo, company_info]], colWidths=[32*mm, content_width-32*mm], hAlign="LEFT")
+            header.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LINEAFTER",(0,0),(0,0),.5,colors.HexColor("#AAB7C4")),("RIGHTPADDING",(0,0),(0,0),4),("LEFTPADDING",(1,0),(1,0),4),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1)]))
         except Exception:
-            pass
-    head = Table([heading], colWidths=[35*mm, 75*mm, 55*mm] if len(heading) == 3 else [95*mm, 70*mm])
-    head.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"), ("ALIGN", (-1,0), (-1,-1), "RIGHT"), ("BOTTOMPADDING",(0,0),(-1,-1),8)]))
-    story.append(head)
-    company_name = str(company.get("name") or "Company")
-    content_width = A4[0] - 34*mm
-    try:
-        identity_width = min(content_width, max(55*mm, stringWidth(company_name, "Helvetica-Bold", 18) + 6*mm))
-    except Exception:
-        identity_width = content_width
-    styles.add(ParagraphStyle(name="CompanyTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=1, textColor=colors.black, spaceAfter=2*mm))
-    styles.add(ParagraphStyle(name="CompanyDetails", parent=styles["Small"], fontSize=9, leading=12, alignment=1))
-    styles.add(ParagraphStyle(name="CompanyContact", parent=styles["Small"], fontSize=8, leading=10, alignment=1))
-    identity_lines = [safe(company.get("address")).replace("\n", "<br/>")]
-    identity = Table([[Paragraph(safe(company_name), styles["CompanyTitle"])], [Paragraph("<br/>".join(identity_lines), styles["CompanyDetails"])]], colWidths=[identity_width], hAlign="CENTER")
-    identity.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),0)]))
-    contact_line = "  |  ".join((
-        "<b>Cell No.</b> " + safe(company.get("phone")),
-        "<b>Email Id:</b> " + safe(company.get("email")),
-        "<b>GSTIN:</b> " + safe(company.get("gstin")),
-    ))
-    contact = Table([[Paragraph(contact_line, styles["CompanyContact"])]], colWidths=[content_width])
-    contact.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.6,colors.HexColor("#AAB7C4")),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
-    story += [identity, Spacer(1, 1*mm), contact, Spacer(1, 3*mm)]
-    company_lines = []
-    if company.get("bank"):
-        bank = company["bank"]
-        company_lines.append("<br/><b>Bank details</b>: " + " · ".join(safe(bank.get(k)) for k in ("name", "account", "ifsc", "branch") if bank.get(k)))
-    customer = invoice["customer"]
-    bill_to = ["<b>Bill to</b>", f"<b>{safe(customer['name'])}</b>", safe(customer.get("gstin") or "-Nil-"), safe(invoice_address(customer)).replace("\n", "<br/>")]
-    if customer.get("phone"):
-        bill_to.append("Contact: " + safe(customer["phone"]))
-    ship_to = invoice.get("ship_to", {})
-    if ship_to.get("name") or ship_to.get("address"):
-        bill_to += ["<br/><b>Ship / work location</b>", f"<b>{safe(ship_to.get('name'))}</b>" if ship_to.get("name") else "", safe(ship_to.get("gstin") or "-Nil-"), safe(invoice_address(ship_to)).replace("\n", "<br/>"), ("Contact: " + safe(ship_to.get("phone"))) if ship_to.get("phone") else ""]
-    if company_lines:
-        parties = Table([[Paragraph("<br/>".join(company_lines), styles["BodyText"]), Paragraph("<br/>".join(x for x in bill_to if x), styles["BodyText"])]], colWidths=[82*mm, 88*mm])
+            header = company_info
     else:
-        parties = Table([[Paragraph("<br/>".join(x for x in bill_to if x), styles["BodyText"])]], colWidths=[170*mm])
-    parties.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("BOX",(0,0),(-1,-1),.5,colors.HexColor("#777777")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),9),("RIGHTPADDING",(0,0),(-1,-1),9),("TOPPADDING",(0,0),(-1,-1),9),("BOTTOMPADDING",(0,0),(-1,-1),9)]))
-    story += [parties, Spacer(1, 4*mm)]
-    rows = [["Description", "HSN/SAC", "Qty", "Unit", "Rate (INR)", "Amount (INR)"]]
-    for item in invoice["items"]:
-        rows.append([Paragraph(safe(item["description"]), styles["Small"]), item.get("hsn", ""), f"{item['quantity']:g}", item.get("unit", ""), f"{item['rate']:,.2f}", f"{item['taxable']:,.2f}"])
-    table = Table(rows, colWidths=[58*mm, 20*mm, 14*mm, 13*mm, 29*mm, 42*mm], repeatRows=1)
-    table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),("FONTSIZE",(0,1),(-1,-1),9),("GRID",(0,0),(-1,-1),.4,colors.HexColor("#777777")),("ALIGN",(1,1),(-1,-1),"RIGHT"),("ALIGN",(0,0),(0,-1),"LEFT"),("VALIGN",(0,0),(-1,-1),"TOP"),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
-    story += [table, Spacer(1, 2*mm)]
+        header = company_info
+    story += [header, Spacer(1, 2*mm)]
+    contact_line = "  |  ".join(("<b>Contact No:</b> " + safe(company.get("phone")), "<b>Email:</b> " + safe(company.get("email")), "<b>GSTIN:</b> " + safe(company.get("gstin"))))
+    contact = Table([[Paragraph(contact_line, styles["InvoiceContact"])]], colWidths=[content_width])
+    contact.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.6,colors.black),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
+    story += [contact, Spacer(1, 2*mm)]
+    if company.get("header"):
+        story += [Paragraph(safe(company["header"]), styles["InvoiceSmall"]), Spacer(1, 1*mm)]
+    raw_invoice_date = invoice.get("date", "")
+    try:
+        invoice_date = date.fromisoformat(str(raw_invoice_date)).strftime("%d-%m-%Y")
+    except ValueError:
+        invoice_date = str(raw_invoice_date)
+    reverse_charge = safe(invoice.get("reverse_charge") or "No")
+    warranty = safe(invoice.get("warranty") or "-Nil-")
+    meta_left = Paragraph(f"<b>Invoice No:</b> {safe(invoice['number'])}<br/><b>Date:</b> {safe(invoice_date)}", styles["InvoiceMeta"])
+    meta_right = Paragraph(f"<b>Reverse Charge:</b> {reverse_charge}<br/><b>Warranty:</b> {warranty}", styles["InvoiceMetaRight"])
+    meta = Table([[meta_left, meta_right]], colWidths=[content_width/2, content_width/2])
+    meta.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
+    story += [meta, Spacer(1, 1*mm)]
+    customer = invoice["customer"]
+    ship_to = invoice.get("ship_to", {})
+    def party_block(label, details):
+        lines = [f"<b>{safe(details.get('name') or '-Nil-')}</b>", "<b>GSTIN / UIN:</b> " + safe(details.get("gstin") or "-Nil-"), safe(invoice_address(details)).replace("\n", "<br/>")]
+        if details.get("phone"):
+            lines.append("<b>Contact No:</b> " + safe(details["phone"]))
+        return Paragraph("<b>" + label + "</b><br/>" + "<br/>".join(lines), styles["InvoiceBody"])
+    parties = Table([[party_block("Billed To:", customer), party_block("Shipped / work location:", ship_to)]], colWidths=[content_width/2, content_width/2])
+    parties.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.6,colors.black),("INNERGRID",(0,0),(-1,-1),.5,colors.HexColor("#777777")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+    story += [parties, Spacer(1, 2*mm)]
+    item_rows = [["S.No", "Description of goods / Service charges", "HSN / SAC Code", "Qty", "Unit", "Price", "Amount"]]
+    for index, item in enumerate(invoice["items"], 1):
+        item_rows.append([str(index), Paragraph(safe(item.get("description")), styles["InvoiceSmall"]), safe(item.get("hsn")), f"{item['quantity']:g}", safe(item.get("unit")), f"{item['rate']:,.2f}", f"{item['taxable']:,.2f}"])
+    item_widths = [10*mm, 59*mm, 23*mm, 14*mm, 13*mm, 27*mm, 30*mm]
+    item_table = Table(item_rows, colWidths=item_widths, repeatRows=1)
+    item_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7.2),("GRID",(0,0),(-1,-1),.45,colors.black),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),("ALIGN",(5,1),(-1,-1),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+    story += [item_table, Spacer(1, 2*mm)]
     totals = invoice["totals"]
-    tax_rows = [["Tax rate", "Taxable value", "CGST", "SGST", "IGST"]]
+    groups = []
     for rate in sorted({item["gst"] for item in invoice["items"]}):
         group = [item for item in invoice["items"] if item["gst"] == rate]
         taxable = sum(item["taxable"] for item in group)
-        tax_rows.append([f"{rate:g}%", f"INR {taxable:,.2f}", f"INR {sum(item['cgst'] for item in group):,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {sum(item['sgst'] for item in group):,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {sum(item['igst'] for item in group):,.2f}" if invoice["tax_type"] == "inter" else "-"])
-    tax_rows.append(["Total", f"INR {totals['taxable']:,.2f}", f"INR {totals['cgst']:,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {totals['sgst']:,.2f}" if invoice["tax_type"] == "intra" else "-", f"INR {totals['igst']:,.2f}" if invoice["tax_type"] == "inter" else "-"])
-    tax_table = Table(tax_rows, colWidths=[22*mm, 42*mm, 36*mm, 36*mm, 36*mm])
-    tax_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),("FONTSIZE",(0,1),(-1,-1),10),("LINEBELOW",(0,0),(-1,-1),.4,colors.HexColor("#777777")),("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
-    story += [Paragraph(f"Tax treatment: {'Intra-state (CGST + SGST)' if invoice['tax_type'] == 'intra' else 'Inter-state (IGST)'} · Reverse charge: {safe(invoice.get('reverse_charge') or 'No')}", styles["Small"]), Spacer(1, 1*mm), tax_table]
-    summary_rows = [["Taxable value", f"INR {totals['taxable']:,.2f}"], ["GST total", f"INR {totals['tax']:,.2f}"], ["Round off", f"INR {totals['roundoff']:,.2f}"], ["Grand total", f"INR {totals['total']:,.2f}"]]
-    summary = Table(summary_rows, colWidths=[38*mm, 38*mm], hAlign="RIGHT")
-    summary.setStyle(TableStyle([("TEXTCOLOR",(0,0),(-1,-1),colors.black),("ALIGN",(0,0),(-1,-1),"RIGHT"),("FONTNAME",(0,0),(-1,-1),"Helvetica"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("LINEABOVE",(0,-1),(-1,-1),.8,colors.black),("FONTSIZE",(0,0),(-1,-2),12),("FONTSIZE",(0,-1),(-1,-1),14),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
-    story += [Spacer(1, 1*mm), summary, Spacer(1, 1*mm), Paragraph(f"<b>{escape(amount_in_words(totals['total']))}</b>", styles["BodyText"]), Spacer(1, 3*mm), Paragraph("This is a computer-generated tax invoice.", styles["Small"])]
-    if invoice.get("warranty"):
-        story += [Spacer(1, 1*mm), Paragraph("Warranty: " + safe(invoice["warranty"]), styles["Small"])]
-    if invoice.get("terms"):
-        story += [Spacer(1, 1*mm), Paragraph("<b>Terms &amp; Conditions</b><br/>" + safe(invoice["terms"]).replace("\n", "<br/>"), styles["Small"])]
+        if invoice["tax_type"] == "intra":
+            tax_rows = [f"INR {sum(item['cgst'] for item in group):,.2f}", f"INR {sum(item['sgst'] for item in group):,.2f}"]
+        else:
+            tax_rows = [f"INR {sum(item['igst'] for item in group):,.2f}"]
+        groups.append([f"{rate:g}%", f"INR {taxable:,.2f}", *tax_rows, f"INR {taxable + sum(item['tax'] for item in group):,.2f}"])
+    if invoice["tax_type"] == "intra":
+        tax_header = ["Tax Rate", "Taxable Amt.", "CGST Amt.", "SGST Amt.", "Total"]
+        tax_total = ["Total", f"INR {totals['taxable']:,.2f}", f"INR {totals['cgst']:,.2f}", f"INR {totals['sgst']:,.2f}", f"INR {totals['total']:,.2f}"]
+        tax_widths = [22*mm, 42*mm, 34*mm, 34*mm, 34*mm]
+    else:
+        tax_header = ["Tax Rate", "Taxable Amt.", "IGST Amt.", "Total"]
+        tax_total = ["Total", f"INR {totals['taxable']:,.2f}", f"INR {totals['igst']:,.2f}", f"INR {totals['total']:,.2f}"]
+        tax_widths = [25*mm, 50*mm, 50*mm, 41*mm]
+    tax_table = Table([tax_header, *groups, tax_total], colWidths=tax_widths, hAlign="CENTER")
+    tax_table.setStyle(TableStyle([("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7.5),("GRID",(0,0),(-1,-1),.4,colors.black),("ALIGN",(0,0),(-1,-1),"CENTER"),("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+    story += [tax_table, Spacer(1, 1*mm)]
+    summary = Table([[Paragraph("<b>Round off:</b> " + f"INR {totals['roundoff']:,.2f}", styles["InvoiceSmall"])], [Paragraph("<b>Grand total:</b> " + f"INR {totals['total']:,.2f}", styles["InvoiceBody"])], [Paragraph("<b>" + safe(amount_in_words(totals["total"])) + "</b>", styles["InvoiceSmall"])]], colWidths=[content_width], hAlign="RIGHT")
+    summary.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
+    story.append(summary)
+    bank = company.get("bank") or {}
+    bank_parts = [safe(bank.get(key)) for key in ("account", "ifsc", "branch", "name") if bank.get(key)]
+    if bank_parts:
+        story += [Spacer(1, 1*mm), Paragraph("<b>Bank Details:</b> " + "  |  ".join(bank_parts), styles["InvoiceSmall"])]
+    story += [Spacer(1, 1*mm), Paragraph("<b>Terms &amp; Conditions:</b><br/>" + safe(invoice.get("terms")).replace("\n", "<br/>"), styles["InvoiceSmall"])]
     if company.get("footer"):
-        story += [Spacer(1, 4*mm), Paragraph(safe(company["footer"]), styles["Small"])]
+        story += [Spacer(1, 1*mm), Paragraph(safe(company["footer"]), styles["InvoiceSmall"])]
+    elif company.get("header"):
+        story += [Spacer(1, 1*mm), Paragraph("This is a computer-generated tax invoice.", styles["InvoiceSmall"])]
     doc.build(story, onFirstPage=draw_page, onLaterPages=draw_page)
 
 
@@ -401,9 +419,9 @@ def dashboard():
     if not cfg["company"].get("name"):
         return redirect(url_for("home"))
     with db() as con:
-        invoices = con.execute("SELECT id,number,invoice_date,customer,totals FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC LIMIT 8", (cfg["profile_id"],)).fetchall()
-        count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
-        total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices WHERE profile_id=? AND cancelled=0", (cfg["profile_id"],)).fetchone()[0]
+        invoices = con.execute("SELECT id,number,invoice_date,customer,totals FROM invoices WHERE profile_id=? AND cancelled=0 AND deleted=0 ORDER BY id DESC LIMIT 8", (cfg["profile_id"],)).fetchall()
+        count = con.execute("SELECT count(*) FROM invoices WHERE profile_id=? AND cancelled=0 AND deleted=0", (cfg["profile_id"],)).fetchone()[0]
+        total = con.execute("SELECT COALESCE(sum(json_extract(totals,'$.total')),0) FROM invoices WHERE profile_id=? AND cancelled=0 AND deleted=0", (cfg["profile_id"],)).fetchone()[0]
     return render_template("home.html", cfg=cfg, invoices=[{**dict(x), "customer": json.loads(x["customer"]), "totals": json.loads(x["totals"])} for x in invoices], count=count, total=total)
 
 
@@ -548,7 +566,7 @@ def new_invoice():
         preview_number = next_bill_number(con, cfg["profile_id"], cfg["company"], today)
         preview_sequence = int(re.search(r"(\d+)$", preview_number).group(1))
         last = con.execute("SELECT invoice_date FROM invoices WHERE profile_id=? ORDER BY id DESC LIMIT 1", (cfg["profile_id"],)).fetchone()
-        cancellations = con.execute("SELECT id,number,invoice_date,customer FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
+        cancellations = con.execute("SELECT id,number,invoice_date,customer FROM invoices WHERE profile_id=? AND cancelled=0 AND deleted=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
     available_cancellations = [dict(row) | {"customer": json.loads(row["customer"])} for row in cancellations if date.today() <= cancellation_deadline(row["invoice_date"])]
     return render_template("invoice.html", cfg=cfg, today=today.isoformat(), preview=preview_number, next_sequence=preview_sequence, last_date=last[0] if last else "", error=None, cancellable_count=len(available_cancellations))
 
@@ -638,7 +656,7 @@ def finalize():
 
 
 def render_bill_row(row):
-    if not row:
+    if not row or row["deleted"]:
         abort(404)
     customer = json.loads(row["customer"])
     customer["gstin"] = str(customer.get("gstin", "")).strip().upper()
@@ -666,7 +684,7 @@ def bill_record(record_id):
 def bill(invoice_id):
     # Keep old visible-number links working; the app's own links use the row ID.
     with db() as con:
-        row = con.execute("SELECT * FROM invoices WHERE number=? ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
+        row = con.execute("SELECT * FROM invoices WHERE number=? AND deleted=0 ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
     return render_bill_row(row)
 
 
@@ -674,19 +692,30 @@ def bill(invoice_id):
 def cancellations():
     cfg = settings()
     with db() as con:
-        rows = con.execute("SELECT id,number,invoice_date,customer,pdf_path FROM invoices WHERE profile_id=? AND cancelled=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
+        rows = con.execute("SELECT id,number,invoice_date,customer,pdf_path FROM invoices WHERE profile_id=? AND cancelled=0 AND deleted=0 ORDER BY id DESC", (cfg["profile_id"],)).fetchall()
     bills = []
     for row in rows:
         deadline = cancellation_deadline(row["invoice_date"])
-        if date.today() <= deadline:
-            bills.append({**dict(row), "customer": json.loads(row["customer"]), "cancel_deadline": deadline.isoformat()})
+        bills.append({**dict(row), "customer": json.loads(row["customer"]), "cancel_deadline": deadline.isoformat(), "can_cancel": date.today() <= deadline})
     return render_template("cancellations.html", cfg=cfg, bills=bills)
+
+
+@app.post("/bill/record/<int:record_id>/delete")
+def delete_bill_record(record_id):
+    cfg = settings()
+    with db() as con:
+        row = con.execute("SELECT id FROM invoices WHERE id=? AND profile_id=? AND deleted=0", (record_id, cfg["profile_id"])).fetchone()
+        if not row:
+            abort(404)
+        # Hide the record in the app while retaining its saved PDF and number history.
+        con.execute("UPDATE invoices SET deleted=1 WHERE id=?", (record_id,))
+    return redirect(url_for("dashboard"))
 
 
 def cancel_invoice_record(record_id):
     cfg = settings()
     with db() as con:
-        row = con.execute("SELECT * FROM invoices WHERE id=? AND profile_id=?", (record_id, cfg["profile_id"])).fetchone()
+        row = con.execute("SELECT * FROM invoices WHERE id=? AND profile_id=? AND deleted=0", (record_id, cfg["profile_id"])).fetchone()
         if not row:
             abort(404)
         if row["cancelled"]:
@@ -716,7 +745,7 @@ def cancel_bill_record(record_id):
 def cancel_bill(invoice_id):
     cfg = settings()
     with db() as con:
-        row = con.execute("SELECT id FROM invoices WHERE number=? AND profile_id=? ORDER BY id DESC LIMIT 1", (invoice_id, cfg["profile_id"])).fetchone()
+        row = con.execute("SELECT id FROM invoices WHERE number=? AND profile_id=? AND deleted=0 ORDER BY id DESC LIMIT 1", (invoice_id, cfg["profile_id"])).fetchone()
     if not row:
         abort(404)
     return cancel_invoice_record(row["id"])
@@ -725,7 +754,7 @@ def cancel_bill(invoice_id):
 @app.get("/bill/<invoice_id>/pdf")
 def pdf(invoice_id):
     with db() as con:
-        row = con.execute("SELECT pdf_path FROM invoices WHERE number=? ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
+        row = con.execute("SELECT pdf_path FROM invoices WHERE number=? AND deleted=0 ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
     if not row or not Path(row[0]).is_file():
         abort(404)
     return send_file(row[0], mimetype="application/pdf", as_attachment=False, download_name=f"{invoice_id}.pdf")
@@ -734,7 +763,7 @@ def pdf(invoice_id):
 @app.get("/bill/record/<int:record_id>/pdf")
 def pdf_record(record_id):
     with db() as con:
-        row = con.execute("SELECT number,pdf_path FROM invoices WHERE id=?", (record_id,)).fetchone()
+        row = con.execute("SELECT number,pdf_path FROM invoices WHERE id=? AND deleted=0", (record_id,)).fetchone()
     if not row or not Path(row["pdf_path"]).is_file():
         abort(404)
     return send_file(row["pdf_path"], mimetype="application/pdf", as_attachment=False, download_name=f"{row['number']}.pdf")
@@ -763,7 +792,7 @@ def profile_logo(profile_id):
 @app.get("/bill/<invoice_id>/company-logo")
 def company_logo_for(invoice_id):
     with db() as con:
-        row = con.execute("SELECT company_snapshot FROM invoices WHERE number=? ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
+        row = con.execute("SELECT company_snapshot FROM invoices WHERE number=? AND deleted=0 ORDER BY id DESC LIMIT 1", (invoice_id,)).fetchone()
     if not row:
         abort(404)
     logo = json.loads(row[0]).get("logo", "")
@@ -775,7 +804,7 @@ def company_logo_for(invoice_id):
 @app.get("/bill/record/<int:record_id>/company-logo")
 def company_logo_record(record_id):
     with db() as con:
-        row = con.execute("SELECT company_snapshot FROM invoices WHERE id=?", (record_id,)).fetchone()
+        row = con.execute("SELECT company_snapshot FROM invoices WHERE id=? AND deleted=0", (record_id,)).fetchone()
     if not row:
         abort(404)
     logo = json.loads(row[0]).get("logo", "")
