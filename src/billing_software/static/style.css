@@ -218,6 +218,7 @@ tbody td{font-size:14px;font-variant-numeric:tabular-nums}
 :root[data-theme="light"]{--ink:#172536;--muted:#4f5d6b;--line:#d5dde5;--blue:#174f7c;--blue-dark:#123f65}
 [data-theme="light"] .workspace-label,[data-theme="light"] .metric-label,[data-theme="light"] .eyebrow,[data-theme="light"] .sidebar-note,[data-theme="light"] .brand small,[data-theme="light"] .workspace small,[data-theme="light"] .metric-card small,[data-theme="light"] .step,[data-theme="light"] .hint,[data-theme="light"] .optional,[data-theme="light"] .field em,[data-theme="light"] .items-head,[data-theme="light"] thead th,[data-theme="light"] .text-controls>span,[data-theme="light"] .theme-controls>label{color:#4b5968}
 [data-theme="light"] .nav-link,[data-theme="light"] .field,[data-theme="light"] .same-address,[data-theme="light"] tbody td,[data-theme="light"] .roundoff-field,[data-theme="light"] .totals div{color:#344354}
+[data-theme="light"] .nav-link span,[data-theme="light"] .row-arrow,[data-theme="light"] .remove-item,[data-theme="light"] .info-strip,[data-theme="light"] .info-icon{color:#3f5060}
 [data-theme="light"] .button-quiet{color:#26394b;border-color:#bdc9d5}
 [data-theme="light"] .field input,[data-theme="light"] .field textarea,[data-theme="light"] .field select,[data-theme="light"] .item-row input,[data-theme="light"] .item-row select{color:#172536;border-color:#aebbc8}
 [data-theme="light"] .field input::placeholder,[data-theme="light"] .field textarea::placeholder,[data-theme="light"] .item-row input::placeholder{color:#586675;opacity:1}
