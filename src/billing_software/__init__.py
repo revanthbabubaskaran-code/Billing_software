@@ -292,6 +292,10 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         canvas.drawCentredString(0, 0, "CANCELLED")
         canvas.restoreState()
 
+    def draw_page(canvas, doc):
+        draw_watermark(canvas, doc)
+        draw_cancelled(canvas, doc)
+
     doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=17*mm, leftMargin=17*mm, topMargin=15*mm, bottomMargin=15*mm, title=f"Tax invoice {invoice['number']}")
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=9, leading=12, textColor=colors.black))
@@ -373,9 +377,7 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         story += [Spacer(1, 2*mm), Paragraph("<b>Terms &amp; Conditions</b><br/>" + safe(invoice["terms"]).replace("\n", "<br/>"), styles["Small"])]
     if company.get("footer"):
         story += [Spacer(1, 4*mm), Paragraph(safe(company["footer"]), styles["Small"])]
-    doc.pageTemplates[0].onPage = draw_watermark
-    doc.pageTemplates[0].onPageEnd = draw_cancelled
-    doc.build(story)
+    doc.build(story, onFirstPage=draw_page, onLaterPages=draw_page)
 
 
 @app.get("/")
