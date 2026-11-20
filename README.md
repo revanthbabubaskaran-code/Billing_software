@@ -20,7 +20,7 @@ The editable HSN master is seeded once from the bundled four-digit starter catal
 
 Enter customer and optional ship-to details, place of supply, reverse-charge status, and invoice terms. Add line items with optional HSN/SAC codes and units, quantities, rates, and GST rates. Choose intra-state (CGST plus SGST) or inter-state (IGST) tax treatment. The app shows a tax-rate summary, editable round-off, grand total, and amount in words. The company profile can include phone and email, in addition to GSTIN, address, logo, bank details, and header/footer text.
 
-Each profile sets its invoice number format and starting number. You can optionally enable an annual billing cycle and select its reset day and month. When enabled, numbering restarts at the beginning of each cycle; otherwise it continues from the latest bill. Finalization saves a PDF copy and opens a bill summary with print and PDF actions.
+Each profile sets its invoice number format and starting number. You can optionally enable an annual billing cycle and select its reset day and month. When enabled, numbering restarts at the beginning of each cycle; otherwise it continues from the latest bill. Finalization saves an A4 PDF styled after the sample invoice and opens a bill summary with print and PDF actions. **Bill management** stays in the sidebar and shows cancellation deadlines. A bill can be cancelled through the end of the month after its issue date. Removing a bill from the app hides its entry while retaining the saved PDF and reserving its bill number.
 
 ## Local data
 
