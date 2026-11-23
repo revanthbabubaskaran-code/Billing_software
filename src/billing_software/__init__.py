@@ -433,7 +433,8 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     story += [parties, Spacer(1, 2*mm)]
     item_rows = [[Paragraph("S.No", styles["InvoiceColumnHeading"]), Paragraph("Description of goods /<br/>Service charges", styles["InvoiceColumnHeading"]), Paragraph("HSN / SAC<br/>Code", styles["InvoiceColumnHeading"]), Paragraph("Qty", styles["InvoiceColumnHeading"]), Paragraph("Unit", styles["InvoiceColumnHeading"]), Paragraph("Price", styles["InvoiceColumnHeading"]), Paragraph("Amount", styles["InvoiceColumnHeading"])] ]
     for index, item in enumerate(invoice["items"], 1):
-        item_rows.append([str(index), Paragraph(safe(item.get("description")), styles["InvoiceSmall"]), safe(item.get("hsn")), f"{item['quantity']:g}", safe(item.get("unit")), f"{item['rate']:,.2f}", f"{item['taxable']:,.2f}"])
+        item_description = safe(item.get("description")).replace("\n", "<br/>")
+        item_rows.append([str(index), Paragraph(item_description, styles["InvoiceSmall"]), safe(item.get("hsn")), f"{item['quantity']:g}", safe(item.get("unit")), f"{item['rate']:,.2f}", f"{item['taxable']:,.2f}"])
     item_widths = [12*mm, 57*mm, 23*mm, 14*mm, 13*mm, 27*mm, 30*mm]
     item_table = Table(item_rows, colWidths=item_widths, repeatRows=1)
     item_table_style = [("BACKGROUND",(0,0),(-1,0),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),("BOX",(0,0),(-1,-1),.55,colors.black),("LINEBELOW",(0,0),(-1,0),.55,colors.black),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),("ALIGN",(5,1),(-1,-1),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]
