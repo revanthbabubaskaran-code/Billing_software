@@ -260,6 +260,12 @@ def invoice_address(details):
 
 
 def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
+    template = company.get("invoice_template", "clean")
+    classic_template = template == "classic_boxed"
+    boxed_parties = template in ("classic_boxed", "modern_panels", "compact_ledger")
+    compact_template = template == "compact_ledger"
+    formal_template = template == "formal_header"
+
     def draw_watermark(canvas, doc):
         # A bill is always rendered on a plain white sheet, independent of the
         # application theme. The uploaded image is the only color artwork.
@@ -297,6 +303,12 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     def draw_page(canvas, doc):
         draw_watermark(canvas, doc)
         draw_cancelled(canvas, doc)
+        if classic_template:
+            canvas.saveState()
+            canvas.setStrokeColor(colors.black)
+            canvas.setLineWidth(.6)
+            canvas.rect(7*mm, 7*mm, A4[0]-14*mm, A4[1]-14*mm, fill=0, stroke=1)
+            canvas.restoreState()
 
     doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=17*mm, leftMargin=17*mm, topMargin=9*mm, bottomMargin=9*mm, title=f"Tax invoice {invoice['number']}")
     styles = getSampleStyleSheet()
@@ -354,7 +366,12 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     meta_left = Paragraph(f"<b>Invoice No:</b> {safe(invoice['number'])}<br/><b>Date:</b> {safe(invoice_date)}", styles["InvoiceMeta"])
     meta_right = Paragraph(f"<b>Reverse Charge:</b> {reverse_charge}<br/><b>Warranty:</b> {warranty}", styles["InvoiceMetaRight"])
     meta = Table([[meta_left, meta_right]], colWidths=[content_width/2, content_width/2])
-    meta.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
+    meta_style = [("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]
+    if formal_template:
+        meta_style.append(("BOX",(0,0),(-1,-1),.5,colors.black))
+    if compact_template:
+        meta_style.extend([("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)])
+    meta.setStyle(TableStyle(meta_style))
     story += [meta, Spacer(1, 1*mm)]
     customer = invoice["customer"]
     ship_to = invoice.get("ship_to", {})
@@ -364,10 +381,17 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
         if details.get("phone"):
             lines.append(Paragraph("<b>Contact No:</b> " + safe(details["phone"]), styles["InvoiceSmall"]))
         return lines
-    party_gutter = 10*mm
-    party_width = (content_width-party_gutter)/2
-    parties = Table([[party_block("Billed To:", customer), "", party_block("Shipped / work location:", ship_to)]], colWidths=[party_width,party_gutter,party_width])
-    parties.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+    if boxed_parties:
+        parties = Table([[party_block("Billed To:", customer), party_block("Shipped / work location:", ship_to)]], colWidths=[content_width/2,content_width/2])
+        party_style = [("BOX",(0,0),(-1,-1),.55,colors.black),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]
+        if classic_template or compact_template:
+            party_style.append(("INNERGRID",(0,0),(-1,-1),.4,colors.black))
+        parties.setStyle(TableStyle(party_style))
+    else:
+        party_gutter = 10*mm
+        party_width = (content_width-party_gutter)/2
+        parties = Table([[party_block("Billed To:", customer), "", party_block("Shipped / work location:", ship_to)]], colWidths=[party_width,party_gutter,party_width])
+        parties.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
     story += [parties, Spacer(1, 2*mm)]
     item_rows = [[Paragraph("S.No", styles["InvoiceColumnHeading"]), Paragraph("Description of goods /<br/>Service charges", styles["InvoiceColumnHeading"]), Paragraph("HSN / SAC<br/>Code", styles["InvoiceColumnHeading"]), Paragraph("Qty", styles["InvoiceColumnHeading"]), Paragraph("Unit", styles["InvoiceColumnHeading"]), Paragraph("Price", styles["InvoiceColumnHeading"]), Paragraph("Amount", styles["InvoiceColumnHeading"])] ]
     for index, item in enumerate(invoice["items"], 1):
@@ -375,7 +399,12 @@ def make_pdf(path, invoice, company, logo_path=None, cancelled=False):
     item_widths = [12*mm, 57*mm, 23*mm, 14*mm, 13*mm, 27*mm, 30*mm]
     item_table = Table(item_rows, colWidths=item_widths, repeatRows=1)
     item_table_style = [("BACKGROUND",(0,0),(-1,0),colors.white),("TEXTCOLOR",(0,0),(-1,-1),colors.black),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),("BOX",(0,0),(-1,-1),.55,colors.black),("LINEBELOW",(0,0),(-1,0),.55,colors.black),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),("ALIGN",(5,1),(-1,-1),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]
-    item_table_style.extend(("LINEBEFORE",(column,0),(column,-1),.4,colors.black) for column in range(1,len(item_widths)))
+    if classic_template or compact_template:
+        item_table_style.append(("GRID",(0,0),(-1,-1),.4,colors.black))
+    else:
+        item_table_style.extend(("LINEBEFORE",(column,0),(column,-1),.4,colors.black) for column in range(1,len(item_widths)))
+    if compact_template:
+        item_table_style.extend([("FONTSIZE",(0,0),(-1,-1),7.2),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)])
     item_table.setStyle(TableStyle(item_table_style))
     story += [item_table, Spacer(1, 2*mm)]
     totals = invoice["totals"]
@@ -545,6 +574,9 @@ def setup():
         company["invoice_format"] = request.form.get("invoice_format", "inv_year").strip()
         if company["invoice_format"] not in ("number", "padded3", "inv_year"):
             return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Choose a valid invoice number format.")
+        company["invoice_template"] = request.form.get("invoice_template", "clean").strip()
+        if company["invoice_template"] not in ("clean", "classic_boxed", "modern_panels", "compact_ledger", "formal_header"):
+            return render_template("setup.html", cfg=cfg, is_new=not profile_id, error="Choose one of the available bill templates.")
         company["billing_cycle_enabled"] = request.form.get("billing_cycle_enabled") == "on"
         if company["billing_cycle_enabled"]:
             try:
