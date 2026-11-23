@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 424" role="img" aria-labelledby="title desc">
+  <title id="title">Classic boxed blank invoice</title>
+  <desc id="desc">A classic framed A4 invoice preview with bordered invoice and party sections and a fully ruled item grid.</desc>
+  <rect width="300" height="424" fill="#fff"/>
+  <rect x="8" y="8" width="284" height="408" fill="none" stroke="#252a30" stroke-width=".9"/>
+  <text x="14" y="20" font-family="Arial" font-size="5" fill="#333">GSTIN · · ·</text><text x="286" y="20" text-anchor="end" font-family="Arial" font-size="5" fill="#333">ORIGINAL COPY</text>
+  <rect x="13" y="25" width="274" height="60" fill="#fff" stroke="#333" stroke-width=".7"/>
+  <rect x="20" y="34" width="42" height="36" rx="2" fill="#f7f8fa" stroke="#cbd2d9"/><path d="M28 64l12-19 15 19z" fill="none" stroke="#aeb7c0" stroke-width="1"/>
+  <text x="177" y="45" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#252a30">COMPANY NAME</text>
+  <text x="177" y="56" text-anchor="middle" font-family="Arial" font-size="5" fill="#626b74">Company address · · ·</text>
+  <text x="177" y="69" text-anchor="middle" font-family="Arial" font-size="5" fill="#626b74">Contact · · ·   Email · · ·   GSTIN · · ·</text>
+  <rect x="13" y="85" width="274" height="31" fill="#fff" stroke="#333" stroke-width=".7"/>
+  <path d="M150 85v31M13 101h274" stroke="#777" stroke-width=".5"/>
+  <text x="18" y="96" font-family="Arial" font-size="5" fill="#30363d">Invoice No: · · ·</text><text x="155" y="96" font-family="Arial" font-size="5" fill="#30363d">Reverse charge · · ·</text>
+  <text x="18" y="111" font-family="Arial" font-size="5" fill="#30363d">Date: · · ·</text><text x="155" y="111" font-family="Arial" font-size="5" fill="#30363d">Warranty · · ·</text>
+  <rect x="13" y="116" width="274" height="58" fill="#fff" stroke="#333" stroke-width=".7"/><path d="M150 116v58" stroke="#333" stroke-width=".7"/>
+  <text x="18" y="127" font-family="Arial" font-size="5" font-weight="700" fill="#30363d">BILLED TO</text><text x="155" y="127" font-family="Arial" font-size="5" font-weight="700" fill="#30363d">SHIPPED / WORK LOCATION</text>
+  <text x="18" y="139" font-family="Arial" font-size="6" font-weight="700" fill="#30363d">Customer / Company Name</text><text x="155" y="139" font-family="Arial" font-size="6" font-weight="700" fill="#30363d">Recipient / Site Name</text>
+  <path d="M18 146h124M18 153h124M18 160h124M155 146h124M155 153h124M155 160h124" stroke="#aeb7c0" stroke-width=".5"/>
+  <text x="18" y="169" font-family="Arial" font-size="4.5" fill="#505963">GSTIN · · ·</text><text x="155" y="169" font-family="Arial" font-size="4.5" fill="#505963">GSTIN · · ·</text>
+  <rect x="13" y="174" width="274" height="140" fill="#fff" stroke="#222" stroke-width=".8"/>
+  <path d="M13 190h274M34 174v140M137 174v140M173 174v140M197 174v140M220 174v140M251 174v140M13 214h274M13 238h274M13 262h274M13 286h274" stroke="#333" stroke-width=".5"/>
+  <text x="23" y="185" text-anchor="middle" font-family="Arial" font-size="4.5" font-weight="700" fill="#252a30">S.No</text><text x="86" y="185" text-anchor="middle" font-family="Arial" font-size="4.5" font-weight="700" fill="#252a30">DESCRIPTION</text><text x="155" y="185" text-anchor="middle" font-family="Arial" font-size="4.5" font-weight="700" fill="#252a30">HSN/SAC</text><text x="185" y="185" text-anchor="middle" font-family="Arial" font-size="4.5" font-weight="700" fill="#252a30">QTY</text><text x="208" y="185" text-anchor="middle" font-family="Arial" font-size="4.5" font-weight="700" fill="#252a30">UNIT</text><text x="235" y="185" text-anchor="middle" font-family="Arial" font-size="4.5" font-weight="700" fill="#252a30">PRICE</text><text x="269" y="185" text-anchor="middle" font-family="Arial" font-size="4.5" font-weight="700" fill="#252a30">AMOUNT</text>
+  <rect x="13" y="314" width="274" height="27" fill="none" stroke="#333" stroke-width=".7"/><path d="M13 326h274" stroke="#333" stroke-width=".5"/><text x="18" y="323" font-family="Arial" font-size="5" font-weight="700" fill="#30363d">Tax rate · · ·</text><text x="18" y="337" font-family="Arial" font-size="5" font-weight="700" fill="#30363d">Total · · ·</text>
+  <text x="18" y="352" font-family="Arial" font-size="5.5" font-weight="700" fill="#30363d">Amount in words · · ·</text>
+  <rect x="13" y="358" width="274" height="20" fill="none" stroke="#333" stroke-width=".7"/><text x="18" y="371" font-family="Arial" font-size="5" font-weight="700" fill="#30363d">BANK DETAILS · · ·</text>
+  <rect x="13" y="378" width="274" height="33" fill="none" stroke="#333" stroke-width=".7"/><path d="M150 378v33" stroke="#777" stroke-width=".5"/><text x="18" y="389" font-family="Arial" font-size="4.8" font-weight="700" fill="#30363d">Terms &amp; conditions · · ·</text><text x="282" y="402" text-anchor="end" font-family="Arial" font-size="4.8" fill="#555">Authorized Signatory</text>
+</svg>
+
