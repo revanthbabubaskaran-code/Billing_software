@@ -167,11 +167,16 @@ def money(value):
     return round(float(value or 0), 2)
 
 
+def capitalize_item_description(value):
+    text = str(value or "").strip()
+    return re.sub(r"(^\s*|[/,&]\s*)([^\W\d_])", lambda match: match.group(1) + match.group(2).upper(), text)
+
+
 def totals_for(items, tax_type="intra", roundoff=0):
     base = tax = cgst = sgst = igst = 0.0
     cleaned = []
     for item in items:
-        name = str(item.get("description", "")).strip()
+        name = capitalize_item_description(item.get("description", ""))
         qty, rate, gst = float(item.get("quantity", 0)), money(item.get("rate")), float(item.get("gst", 0))
         hsn, unit = str(item.get("hsn", "")).strip(), str(item.get("unit", "")).strip()
         if not name or qty <= 0 or rate < 0 or gst not in (0, 5, 18):
