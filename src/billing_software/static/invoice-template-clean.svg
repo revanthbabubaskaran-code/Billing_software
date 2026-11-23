@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 424" role="img" aria-labelledby="title desc">
+  <title id="title">Clean centered blank invoice</title>
+  <desc id="desc">A clean A4 invoice preview with a centered company heading, open party details, minimal table rules, and totals.</desc>
+  <rect width="300" height="424" fill="#fff"/>
+  <text x="276" y="15" text-anchor="end" font-family="Arial" font-size="5" fill="#555">ORIGINAL COPY</text>
+  <rect x="17" y="20" width="35" height="30" rx="2" fill="#f7f8fa" stroke="#cbd2d9"/><path d="M24 42l10-14 12 14z" fill="none" stroke="#aeb7c0" stroke-width="1"/>
+  <text x="164" y="32" text-anchor="middle" font-family="Arial" font-size="12" font-weight="700" fill="#252a30">COMPANY NAME</text>
+  <text x="164" y="42" text-anchor="middle" font-family="Arial" font-size="5" fill="#626b74">Company address centered under the name</text>
+  <rect x="14" y="56" width="272" height="17" fill="#fff" stroke="#333" stroke-width=".8"/>
+  <path d="M93 56v17M207 56v17" stroke="#777" stroke-width=".6"/>
+  <text x="19" y="66" font-family="Arial" font-size="5" fill="#333">Contact No.  · · ·</text><text x="150" y="66" text-anchor="middle" font-family="Arial" font-size="5" fill="#333">Email · · ·</text><text x="281" y="66" text-anchor="end" font-family="Arial" font-size="5" fill="#333">GSTIN · · ·</text>
+  <text x="18" y="88" font-family="Arial" font-size="6" font-weight="700" fill="#30363d">Invoice No: · · ·</text><text x="18" y="97" font-family="Arial" font-size="6" font-weight="700" fill="#30363d">Date: · · ·</text><text x="282" y="88" text-anchor="end" font-family="Arial" font-size="5" fill="#30363d">Reverse charge · · ·</text>
+  <text x="18" y="117" font-family="Arial" font-size="5" fill="#66717b">BILLED TO</text><text x="157" y="117" font-family="Arial" font-size="5" fill="#66717b">SHIPPED / WORK LOCATION</text>
+  <text x="18" y="129" font-family="Arial" font-size="7" font-weight="700" fill="#30363d">Customer / Company Name</text><text x="157" y="129" font-family="Arial" font-size="7" font-weight="700" fill="#30363d">Recipient / Site Name</text>
+  <path d="M18 136h118M157 136h125M18 142h118M157 142h125M18 148h118M157 148h125" stroke="#aeb7c0" stroke-width=".6"/>
+  <text x="18" y="157" font-family="Arial" font-size="5" fill="#505963">GSTIN · · ·</text><text x="157" y="157" font-family="Arial" font-size="5" fill="#505963">GSTIN · · ·</text>
+  <rect x="15" y="168" width="270" height="139" fill="#fff" stroke="#222" stroke-width=".8"/>
+  <path d="M15 183h270M34 168v139M135 168v139M172 168v139M197 168v139M221 168v139M250 168v139" stroke="#333" stroke-width=".6"/>
+  <text x="24" y="178" text-anchor="middle" font-family="Arial" font-size="5" font-weight="700" fill="#252a30">No.</text><text x="84" y="178" text-anchor="middle" font-family="Arial" font-size="5" font-weight="700" fill="#252a30">DESCRIPTION</text><text x="153" y="178" text-anchor="middle" font-family="Arial" font-size="5" font-weight="700" fill="#252a30">HSN</text><text x="184" y="178" text-anchor="middle" font-family="Arial" font-size="5" font-weight="700" fill="#252a30">QTY</text><text x="209" y="178" text-anchor="middle" font-family="Arial" font-size="5" font-weight="700" fill="#252a30">UNIT</text><text x="235" y="178" text-anchor="middle" font-family="Arial" font-size="5" font-weight="700" fill="#252a30">PRICE</text><text x="268" y="178" text-anchor="middle" font-family="Arial" font-size="5" font-weight="700" fill="#252a30">AMOUNT</text>
+  <path d="M15 208h270M15 233h270M15 258h270M15 283h270" stroke="#d2d7dc" stroke-width=".45"/>
+  <text x="227" y="322" font-family="Arial" font-size="6" fill="#3b4249">Tax total · · ·</text><path d="M15 328h270" stroke="#555" stroke-width=".7"/><text x="227" y="340" font-family="Arial" font-size="8" font-weight="700" fill="#20262c">Grand total · · ·</text>
+  <text x="18" y="354" font-family="Arial" font-size="5" font-weight="700" fill="#30363d">Amount in words · · ·</text>
+  <rect x="15" y="363" width="270" height="19" fill="#fff" stroke="#555" stroke-width=".6"/><path d="M150 363v19" stroke="#777" stroke-width=".5"/>
+  <text x="18" y="393" font-family="Arial" font-size="5" fill="#555">Terms &amp; conditions · · ·</text><text x="282" y="393" text-anchor="end" font-family="Arial" font-size="5" fill="#555">Authorized Signatory</text>
+</svg>
+
