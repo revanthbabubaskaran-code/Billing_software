@@ -43,6 +43,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, invoice_date TEXT NOT NULL, customer TEXT NOT NULL, items TEXT NOT NULL, totals TEXT NOT NULL, company_snapshot TEXT NOT NULL, pdf_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, cancelled INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS hsn_master (code TEXT PRIMARY KEY, description TEXT NOT NULL, usage TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS hsn_catalog_imports (catalog TEXT PRIMARY KEY, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS item_catalog (id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id INTEGER NOT NULL, normalized_description TEXT NOT NULL, description TEXT NOT NULL, hsn TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT '', rate REAL NOT NULL DEFAULT 0, gst REAL NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(profile_id, normalized_description));
+        CREATE TABLE IF NOT EXISTS app_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         INSERT OR IGNORE INTO settings(id) VALUES(1);
         """)
         # Import the bundled, GSTN/CBIC-sourced starter headings once. The separate
@@ -96,6 +98,37 @@ def init_db():
             con.execute("INSERT INTO invoices(id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,deleted,profile_id) SELECT id,number,invoice_date,customer,items,totals,company_snapshot,pdf_path,created_at,cancelled,deleted,profile_id FROM invoices_unique_number_old")
             con.execute("DROP TABLE invoices_unique_number_old")
         con.execute("CREATE INDEX IF NOT EXISTS invoices_profile_cycle_lookup ON invoices(profile_id,invoice_date,id)")
+        # Seed suggestions from saved invoices once so existing history is useful immediately.
+        if not con.execute("SELECT 1 FROM app_migrations WHERE name='item-catalog-from-invoices-v1'").fetchone():
+            for row in con.execute("SELECT profile_id,items FROM invoices WHERE profile_id IS NOT NULL").fetchall():
+                try:
+                    saved_items = json.loads(row["items"])
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                for item in saved_items:
+                    description = str(item.get("description", "")).strip()
+                    if not description:
+                        continue
+                    con.execute(
+                        "INSERT OR IGNORE INTO item_catalog(profile_id,normalized_description,description,hsn,unit,rate,gst) VALUES(?,?,?,?,?,?,?)",
+                        (row["profile_id"], description.casefold(), description, str(item.get("hsn", "")), str(item.get("unit", "")), float(item.get("rate", 0) or 0), float(item.get("gst", 0) or 0)),
+                    )
+            con.execute("INSERT INTO app_migrations(name) VALUES('item-catalog-from-invoices-v1')")
+
+
+def remember_items(con, profile_id, items):
+    if not profile_id:
+        return
+    for item in items:
+        description = str(item.get("description", "")).strip()
+        normalized = description.casefold()
+        if not normalized:
+            continue
+        con.execute(
+            "INSERT INTO item_catalog(profile_id,normalized_description,description,hsn,unit,rate,gst) VALUES(?,?,?,?,?,?,?) "
+            "ON CONFLICT(profile_id,normalized_description) DO UPDATE SET description=excluded.description, hsn=excluded.hsn, unit=excluded.unit, rate=excluded.rate, gst=excluded.gst, uses=item_catalog.uses+1, updated_at=CURRENT_TIMESTAMP",
+            (profile_id, normalized, description, str(item.get("hsn", "")), str(item.get("unit", "")), float(item.get("rate", 0) or 0), float(item.get("gst", 0) or 0)),
+        )
 
 
 init_db()
@@ -514,6 +547,23 @@ def hsn_master():
     return render_template("hsn_master.html", cfg=settings(), codes=codes, error=error)
 
 
+@app.get("/item-suggest")
+def item_suggest():
+    cfg = settings()
+    query = request.args.get("q", "").strip().casefold()
+    if len(query) < 3 or not cfg["profile_id"]:
+        return jsonify([])
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    with db() as con:
+        rows = con.execute(
+            "SELECT description,hsn,unit,rate,gst,uses FROM item_catalog "
+            "WHERE profile_id=? AND normalized_description LIKE ? ESCAPE '\\' "
+            "ORDER BY uses DESC, updated_at DESC, description COLLATE NOCASE LIMIT 10",
+            (cfg["profile_id"], escaped + "%"),
+        ).fetchall()
+    return jsonify([dict(row) for row in rows])
+
+
 @app.get("/hsn-suggest")
 def hsn_suggest():
     query = request.args.get("q", "").strip().lower()
@@ -724,6 +774,7 @@ def finalize():
             make_pdf(pdf_path, record, cfg["company"], cfg["company"].get("logo"))
             save_stage = "saving the bill record"
             cur = con.execute("INSERT INTO invoices(number,invoice_date,customer,items,totals,company_snapshot,pdf_path,profile_id) VALUES(?,?,?,?,?,?,?,?)", (number, invoice_date, json.dumps(customer), json.dumps(items), json.dumps(totals), json.dumps(cfg["company"]), str(pdf_path), cfg["profile_id"]))
+            remember_items(con, cfg["profile_id"], items)
         return redirect(url_for("bill_record", record_id=cur.lastrowid))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         with db() as con:
